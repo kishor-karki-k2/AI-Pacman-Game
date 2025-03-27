@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="AI Learning Pac-Man Login" />
+  <title>Pac-Man Login</title>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary-color: #fff;
+      --secondary-color: #ffd700; /* Pac-Man yellow */
+      --glass-bg: rgba(255, 255, 255, 0.15);
+      --shadow-light: rgba(0, 0, 0, 0.2);
+      --shadow-dark: rgba(0, 0, 0, 0.3);
+      --transition: all 0.3s ease;
+      --bg-dark: #1a1a2e; /* Dark blue-gray */
+      --bg-light: #2e2e4e; /* Lighter blue-gray */
+      --bg-accent: #d8b4fe; /* Light purple */
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      font-family: 'Segoe UI', Arial, sans-serif;
+    }
+
+    body {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      background: linear-gradient(45deg, var(--bg-dark), var(--bg-light), var(--bg-accent));
+      background-size: 200% 200%;
+      animation: gradientShift 12s ease-in-out infinite;
+      overflow-x: hidden;
+      padding: 20px;
+      position: relative;
+    }
+
+    body::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+      background: 
+        radial-gradient(circle at 20% 30%, rgba(216, 180, 254, 0.2) 0%, transparent 10%),
+        radial-gradient(circle at 80% 70%, rgba(255, 215, 0, 0.15) 0%, transparent 15%);
+      animation: subtlePulse 8s ease-in-out infinite;
+    }
+
+    .geometric {
+      position: absolute;
+      z-index: 0;
+      opacity: 0.3;
+      animation: float 6s ease-in-out infinite;
+      pointer-events: none;
+    }
+
+    .circle {
+      width: 60px;
+      height: 60px;
+      border-radius: 50%;
+      background: rgba(216, 180, 254, 0.2);
+      box-shadow: 0 0 15px rgba(216, 180, 254, 0.3);
+      top: 10%;
+      left: 15%;
+    }
+
+    .triangle {
+      width: 0;
+      height: 0;
+      border-left: 30px solid transparent;
+      border-right: 30px solid transparent;
+      border-bottom: 50px solid rgba(255, 215, 0, 0.2);
+      top: 70%;
+      right: 20%;
+      animation-duration: 7s;
+    }
+
+    .square {
+      width: 50px;
+      height: 50px;
+      background: rgba(255, 255, 255, 0.15);
+      transform: rotate(45deg);
+      top: 40%;
+      left: 70%;
+      animation-duration: 5s;
+    }
+
+    .pacman {
+      position: absolute;
+      width: 40px;
+      height: 40px;
+      background: radial-gradient(circle at 70% 50%, transparent 30%, var(--secondary-color) 30%);
+      border-radius: 50%;
+      z-index: 0;
+      opacity: 0.7;
+      animation: chase 10s linear infinite;
+    }
+
+    .chaser-ghost {
+      position: absolute;
+      width: 40px;
+      height: 40px;
+      border-radius: 50% 50% 0 0;
+      background: #ff6666;
+      opacity: 0.7;
+      z-index: 0;
+      animation: chaseGhost 10s linear infinite;
+      box-shadow: 0 0 10px rgba(255, 102, 102, 0.5);
+    }
+
+    .chaser-ghost::before,
+    .chaser-ghost::after {
+      content: '';
+      position: absolute;
+      width: 8px;
+      height: 8px;
+      background: #fff;
+      border-radius: 50%;
+      top: 12px;
+    }
+
+    .chaser-ghost::before { left: 8px; }
+    .chaser-ghost::after { right: 8px; }
+
+    .main-heading {
+      color: var(--primary-color);
+      font-family: 'Press Start 2P', cursive;
+      font-size: clamp(24px, 4vw, 36px);
+      text-shadow: 0 2px 4px var(--shadow-light), 0 0 10px rgba(255, 215, 0, 0.5);
+      margin-bottom: 40px;
+      text-align: center;
+      z-index: 1;
+      animation: flicker 3s infinite ease-in-out;
+    }
+
+    .container {
+      display: flex;
+      width: min(900px, 95%);
+      justify-content: center;
+      z-index: 1;
+      animation: fadeIn 1s ease-out;
+    }
+
+    .panel {
+      background: var(--glass-bg);
+      border-radius: 15px;
+      padding: 25px;
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      box-shadow: 0 6px 20px var(--shadow-dark);
+      transition: var(--transition);
+      width: 100%;
+      max-width: 400px;
+    }
+
+    .panel:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 8px 25px var(--shadow-dark);
+    }
+
+    .left-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    h1, h2 {
+      color: var(--primary-color);
+      text-shadow: 0 1px 2px var(--shadow-light);
+    }
+
+    h1 {
+      font-size: clamp(22px, 3.5vw, 28px);
+      margin-bottom: 15px;
+    }
+
+    h2 {
+      font-size: clamp(18px, 2.5vw, 22px);
+    }
+
+    .input-group {
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+    }
+
+    input[type="text"] {
+      padding: 12px 15px;
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--primary-color);
+      font-size: 16px;
+      outline: none;
+      transition: var(--transition);
+      width: 100%;
+    }
+
+    input[type="text"]::placeholder {
+      color: rgba(255, 255, 255, 0.6);
+    }
+
+    input[type="text"]:focus {
+      border-color: var(--secondary-color);
+      background: rgba(255, 255, 255, 0.1);
+      box-shadow: 0 0 10px rgba(255, 215, 0, 0.2);
+    }
+
+    button {
+      padding: 12px 30px;
+      border: none;
+      border-radius: 8px;
+      background: var(--secondary-color);
+      color: var(--bg-dark);
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: var(--transition);
+      box-shadow: 0 3px 10px var(--shadow-light);
+      align-self: center;
+      width: 100%;
+      max-width: 200px;
+    }
+
+    button:hover {
+      background: #ffaa00;
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(255, 215, 0, 0.3);
+    }
+
+    button:active {
+      transform: translateY(1px);
+    }
+
+    .ghost {
+      position: absolute;
+      width: 40px;
+      height: 40px;
+      border-radius: 50% 50% 0 0;
+      opacity: 0.6;
+      animation: float 5s ease-in-out infinite;
+      box-shadow: 0 0 10px currentColor;
+      z-index: 0;
+    }
+
+    .ghost.red { background: #ff6666; top: 15%; left: 15%; }
+    .ghost.pink { background: #ff99cc; top: 65%; right: 20%; }
+    .ghost.cyan { background: #66ffff; bottom: 15%; left: 25%; }
+    .ghost.orange { background: #ff9966; top: 35%; right: 30%; }
+
+    .ghost::before,
+    .ghost::after {
+      content: '';
+      position: absolute;
+      width: 8px;
+      height: 8px;
+      background: #fff;
+      border-radius: 50%;
+      top: 12px;
+    }
+
+    .ghost::before { left: 8px; }
+    .ghost::after { right: 8px; }
+
+    @media (max-width: 600px) {
+      .panel {
+        padding: 20px;
+      }
+      .ghost, .pacman, .chaser-ghost, .circle, .square {
+        width: 30px;
+        height: 30px;
+      }
+      .triangle {
+        border-left: 15px solid transparent;
+        border-right: 15px solid transparent;
+        border-bottom: 25px solid rgba(255, 215, 0, 0.2);
+      }
+      .ghost::before, .ghost::after, .chaser-ghost::before, .chaser-ghost::after {
+        width: 6px;
+        height: 6px;
+        top: 10px;
+      }
+      button {
+        max-width: 100%;
+      }
+    }
+
+    @keyframes gradientShift {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+
+    @keyframes subtlePulse {
+      0%, 100% { opacity: 0.8; transform: scale(0.95); }
+      50% { opacity: 1; transform: scale(1); }
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes float {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-15px); }
+    }
+
+    @keyframes chase {
+      0% { left: -10%; top: 10%; transform: rotate(0deg); }
+      50% { left: 50%; top: 10%; transform: rotate(360deg); }
+      100% { left: 110%; top: 10%; transform: rotate(720deg); }
+    }
+
+    @keyframes chaseGhost {
+      0% { left: -20%; top: 10%; }
+      50% { left: 40%; top: 10%; }
+      100% { left: 100%; top: 10%; }
+    }
+
+    @keyframes flicker {
+      0%, 100% { opacity: 1; text-shadow: 0 2px 4px var(--shadow-light), 0 0 10px rgba(255, 215, 0, 0.5); }
+      50% { opacity: 0.9; text-shadow: 0 2px 6px var(--shadow-light), 0 0 15px rgba(255, 215, 0, 0.7); }
+    }
+  </style>
+</head>
+<body>
+  <h1 class="main-heading" role="heading" aria-level="1">AI Learning Pac-Man</h1>
+  <div class="container" role="main">
+    <div class="panel left-panel" aria-label="Login Section">
+      <h2>Pac-Man Login</h2>
+      <form class="input-group">
+        <input type="text" placeholder="Your Name" required aria-label="Name" />
+        <input type="text" placeholder="Your Class" required aria-label="Class" />
+        <button type="submit">Start Game</button>
+      </form>
+    </div>
+  </div>
+  <div class="ghost red" aria-hidden="true"></div>
+  <div class="ghost pink" aria-hidden="true"></div>
+  <div class="ghost cyan" aria-hidden="true"></div>
+  <div class="ghost orange" aria-hidden="true"></div>
+  <div class="geometric circle" aria-hidden="true"></div>
+  <div class="geometric triangle" aria-hidden="true"></div>
+  <div class="geometric square" aria-hidden="true"></div>
+  <div class="pacman" aria-hidden="true"></div>
+  <div class="chaser-ghost" aria-hidden="true"></div>
+</body>
+</html>

@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pacman AI Learning Game</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        /* Prevent scrolling when using arrow keys */
+        html, body {
+            height: 100%;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .game-container {
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 20px;
+            padding: 10px;
+            flex: 1;
+            overflow: hidden;
+        }
+        
+        /* Updated canvas sizing - allows for proper scaling while preserving aspect ratio */
+        canvas {
+            width: 450px !important; 
+            height: 520px !important;
+            image-rendering: pixelated; /* Keeps pixel art crisp when scaled */
+            display: block; /* Removes bottom margin */
+            margin: 0 auto; /* Center horizontally */
+            border-radius: 10px; /* Rounded corners */
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5); /* Add shadow for depth */
+        }
+        
+        /* Smaller panel headings */
+        .game-panel h2 {
+            font-size: 1.3rem;
+        }
+        
+        /* Smaller stats and controls */
+        .game-stats {
+            font-size: 0.85rem;
+        }
+        
+        .game-controls button {
+            font-size: 0.85rem;
+            padding: 5px 12px;
+            position: relative; /* For click effect */
+            overflow: hidden; /* For click effect */
+        }
+        
+        /* Game panel with instructions side by side */
+        .game-panel-container {
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            margin-bottom: 20px;
+            gap: 15px;
+        }
+        
+        .game-instructions, .ai-stats {
+            margin-right: 0;
+            width: 220px;
+        }
+        
+        .game-panel {
+            margin-bottom: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        /* Canvas container to maintain aspect ratio */
+        .canvas-container {
+            width: 450px;
+            height: 520px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            margin: 0 auto;
+            border-radius: 10px;
+        }
+        
+        /* Different colored mazes */
+        #player-game {
+            background-color: #00796b; /* Teal */
+            border: 2px solid rgba(0, 188, 170, 0.7) !important;
+            box-shadow: 0 0 20px rgba(0, 188, 170, 0.7) !important;
+            animation: gradientBorder 8s infinite !important;
+        }
+        
+        #ai-game {
+            background-color: #311b92; /* Deep purple */
+            border: 2px solid rgba(186, 104, 200, 0.7) !important;
+            box-shadow: 0 0 20px rgba(186, 104, 200, 0.7) !important;
+            animation: gradientBorder 8s infinite reverse !important;
+        }
+        
+        /* Loading animation styles */
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #121212;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            transition: opacity 0.5s;
+        }
+        
+        .loading-container {
+            text-align: center;
+        }
+        
+        .loading-pacman {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: #FFCC00;
+            position: relative;
+            margin: 0 auto 30px;
+            animation: loadingChomp 0.5s linear infinite;
+        }
+        
+        .loading-pacman::before {
+            content: '';
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            background: #121212;
+            border-radius: 50%;
+        }
+        
+        .loading-text {
+            color: #FFCC00;
+            font-size: 1.5rem;
+            margin-top: 15px;
+            text-shadow: 0 0 10px rgba(255, 204, 0, 0.5);
+        }
+        
+        .loading-dots {
+            display: inline-block;
+            width: 60px;
+            overflow: hidden;
+            animation: loadingDots 1.2s infinite;
+        }
+        
+        /* Animation effects */
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+        
+        @keyframes glow {
+            0% { box-shadow: 0 0 20px rgba(255, 204, 0, 0.3); }
+            50% { box-shadow: 0 0 30px rgba(255, 204, 0, 0.5); }
+            100% { box-shadow: 0 0 20px rgba(255, 204, 0, 0.3); }
+        }
+        
+        /* Gradient glow animation for game frames */
+        @keyframes gradientBorder {
+            0% { 
+                border-color: rgba(255, 0, 0, 0.7);
+                box-shadow: 0 0 20px rgba(255, 0, 0, 0.7);
+            }
+            20% { 
+                border-color: rgba(255, 165, 0, 0.7);
+                box-shadow: 0 0 20px rgba(255, 165, 0, 0.7);
+            }
+            40% { 
+                border-color: rgba(255, 255, 0, 0.7);
+                box-shadow: 0 0 20px rgba(255, 255, 0, 0.7);
+            }
+            60% { 
+                border-color: rgba(0, 255, 0, 0.7);
+                box-shadow: 0 0 20px rgba(0, 255, 0, 0.7);
+            }
+            80% { 
+                border-color: rgba(0, 0, 255, 0.7);
+                box-shadow: 0 0 20px rgba(0, 0, 255, 0.7);
+            }
+            100% { 
+                border-color: rgba(255, 0, 0, 0.7);
+                box-shadow: 0 0 20px rgba(255, 0, 0, 0.7);
+            }
+        }
+        
+        /* Background color animation */
+        @keyframes gradientBackground {
+            0% { background-color: rgba(80, 0, 0, 0.2); }
+            20% { background-color: rgba(80, 40, 0, 0.2); }
+            40% { background-color: rgba(80, 80, 0, 0.2); }
+            60% { background-color: rgba(0, 80, 0, 0.2); }
+            80% { background-color: rgba(0, 0, 80, 0.2); }
+            100% { background-color: rgba(80, 0, 0, 0.2); }
+        }
+        
+        /* Apply gradient background to body */
+        body {
+            animation: gradientBackground 8s infinite;
+            background-image: linear-gradient(135deg, #2c3e50 0%, #4a569d 50%, #24243e 100%);
+            background-blend-mode: overlay;
+        }
+        
+        /* Subtle panel glow to match current color */
+        @keyframes panelGlow {
+            0% { border-color: rgba(255, 0, 0, 0.3); }
+            20% { border-color: rgba(255, 165, 0, 0.3); }
+            40% { border-color: rgba(255, 255, 0, 0.3); }
+            60% { border-color: rgba(0, 255, 0, 0.3); }
+            80% { border-color: rgba(0, 0, 255, 0.3); }
+            100% { border-color: rgba(255, 0, 0, 0.3); }
+        }
+        
+        /* Apply subtle glow to game panels */
+        .game-panel {
+            animation: fadeIn 0.8s ease-out, panelGlow 8s infinite !important;
+            border-width: 2px !important;
+        }
+        
+        @keyframes slideIn {
+            0% { transform: translateY(-20px); opacity: 0; }
+            100% { transform: translateY(0); opacity: 1; }
+        }
+        
+        @keyframes fadeIn {
+            0% { opacity: 0; }
+            100% { opacity: 1; }
+        }
+        
+        /* Loading animation */
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #121212;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            transition: opacity 0.5s;
+        }
+        
+        .loading-container {
+            text-align: center;
+        }
+        
+        .loading-pacman {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: #FFCC00;
+            position: relative;
+            margin: 0 auto 30px;
+            animation: loadingChomp 0.5s linear infinite;
+        }
+        
+        .loading-pacman::before {
+            content: '';
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            background: #121212;
+            border-radius: 50%;
+        }
+        
+        .loading-text {
+            color: #FFCC00;
+            font-size: 1.5rem;
+            margin-top: 15px;
+            text-shadow: 0 0 10px rgba(255, 204, 0, 0.5);
+        }
+        
+        .loading-dots {
+            display: inline-block;
+            width: 60px;
+            overflow: hidden;
+            animation: loadingDots 1.2s infinite;
+        }
+        
+        @keyframes loadingDots {
+            0% { width: 0; }
+            50% { width: 30px; }
+            100% { width: 60px; }
+        }
+        
+        /* Apply animations */
+        .game-panel {
+            animation: fadeIn 0.8s ease-out;
+        }
+        
+        .game-stats {
+            animation: slideIn 0.5s ease-out;
+        }
+        
+        button:hover {
+            animation: pulse 0.6s infinite;
+        }
+        
+        canvas {
+            animation: glow 3s infinite;
+        }
+        
+        .game-panel h2 {
+            animation: fadeIn 1s ease-out;
+        }
+        
+        /* Enhanced tooltips */
+        [data-tooltip] {
+            position: relative;
+            cursor: help;
+        }
+        
+        [data-tooltip]::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 125%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 6px;
+            white-space: nowrap;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+            pointer-events: none;
+            font-size: 12px;
+            z-index: 100;
+        }
+        
+        [data-tooltip]:hover::after {
+            opacity: 1;
+            visibility: visible;
+        }
+        
+        /* Visual feedback on control buttons */
+        .game-controls button:active::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 8px;
+            animation: buttonPress 0.3s ease-out;
+        }
+        
+        @keyframes buttonPress {
+            0% { transform: scale(0); opacity: 1; }
+            100% { transform: scale(1.5); opacity: 0; }
+        }
+    </style>
+</head>
+<body>
+    <!-- Loading overlay -->
+    <div class="loading-overlay" id="loading-overlay">
+        <div class="loading-container">
+            <div class="loading-pacman"></div>
+            <div class="loading-text">Loading Game<span class="loading-dots">...</span></div>
+        </div>
+    </div>
+
+    <header class="small-header">
+        <h1>Pacman AI Learning Game</h1>
+        <p>Train the AI by playing the game yourself!</p>
+    </header>
+    
+    <!-- Floating Ghosts Container -->
+    <div id="floating-ghosts-container"></div>
+    
+    <div class="game-container">
+        <div class="game-panel-container">
+            <div class="game-instructions">
+                <div class="ghost-icon"></div>
+                <h3><span class="pacman-icon"></span>HOW TO PLAY</h3>
+                <p>Use arrow keys to move</p>
+                <p>Eat all dots to win</p>
+                <p>Avoid ghosts</p>
+                <p>Power pellets help</p>
+            </div>
+            <div class="game-panel">
+                <h2>Your Game</h2>
+                <div class="game-stats">
+                    <div class="score">Score: <span id="player-score">0</span></div>
+                    <div class="lives">Lives: <span id="player-lives">3</span></div>
+                </div>
+                <div class="game-controls">
+                    <button id="start-game">Start Game</button>
+                    <button id="reset-game">Reset Game</button>
+                </div>
+                <div class="canvas-container">
+                    <canvas id="player-game" width="450" height="520"></canvas>
+                </div>
+            </div>
+        </div>
+        
+        <div class="game-panel-container">
+            <div class="ai-stats">
+                <div class="ghost-icon" style="background-color: #00BFFF;"></div>
+                <h3><span class="pacman-icon"></span>AI LEARNING</h3>
+                <p>AI learns from you</p>
+                <p>Each generation improves</p>
+                <p>Watch AI adapt</p>
+                <p>Goal: Beat your score</p>
+            </div>
+            <div class="game-panel">
+                <h2>AI Game</h2>
+                <div class="game-stats">
+                    <div class="score">Score: <span id="ai-score">0</span></div>
+                    <div class="generation">Generation: <span id="ai-generation">0</span>/100</div>
+                    <div class="learning">Learning Progress: <span id="ai-learning">0</span>%</div>
+                </div>
+                <div class="game-controls">
+                    <button id="start-ai">Start AI</button>
+                    <button id="reset-ai">Reset AI</button>
+                </div>
+                <div class="canvas-container">
+                    <canvas id="ai-game" width="450" height="520"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Load scripts at the end for faster page loading -->
+    <script src="{{ url_for('static', filename='js/game.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/ai.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html> 
