@@ -23,7 +23,7 @@ class AIGame {
         this.gameOver = false;
         this.gameWon = false;
         this.score = 0;
-        this.lives = 1; // AI has only one life per run
+        this.lives = 1; // AI has only one life per generation - dies immediately on ghost contact
         this.powerMode = false;
         this.powerModeTimer = null;
         this.animationFrame = null;
@@ -34,6 +34,12 @@ class AIGame {
         this.powerPelletCount = 0;
         this.ghostsEaten = 0;
         this.lastPosition = null;
+        this.speedFactor = 1.0; // Default speed factor of 1.0 (normal speed)
+        
+        // Frame timing variables
+        this.lastFrameTime = performance.now();
+        this.frameAccumulator = 0;
+        this.frameTimeTarget = 1000 / 60; // Target 60 FPS (time in ms per frame)
         
         // Direction state
         this.currentDirection = {...DIRECTIONS.RIGHT};
@@ -59,12 +65,20 @@ class AIGame {
     
     // Start the game
     start() {
-        if (this.gameStarted && !this.paused) return;
+        if (this.gameStarted) return;
         
-        console.log("Starting AI game...");
+        console.log("Starting AI game");
         this.gameStarted = true;
         this.paused = false;
-        this.runGameLoop();
+        this.gameOver = false;
+        this.gameWon = false;
+        
+        // Reset frame timing variables
+        this.lastFrameTime = performance.now();
+        this.frameAccumulator = 0;
+        
+        // Start the game loop
+        this.animationFrame = requestAnimationFrame(() => this.runGameLoop());
     }
     
     // Reset the game
@@ -127,9 +141,26 @@ class AIGame {
     
     // Run the game loop
     runGameLoop() {
-        if (this.paused || this.gameOver) return;
+        if (this.paused || this.gameOver) {
+            return;
+        }
         
-        this.update();
+        // Delta time calculation for frame rate independence
+        const now = performance.now();
+        const deltaTime = now - this.lastFrameTime;
+        this.lastFrameTime = now;
+        
+        // Apply the speed factor
+        const speedAdjustedDelta = deltaTime * this.speedFactor;
+        
+        // Only update based on target frame rate (60 FPS)
+        this.frameAccumulator += speedAdjustedDelta;
+        while (this.frameAccumulator >= this.frameTimeTarget) {
+            this.update();
+            this.frameAccumulator -= this.frameTimeTarget;
+        }
+        
+        // Always render
         this.render();
         
         // Make an AI decision every few frames
@@ -522,7 +553,10 @@ class AIGame {
                 } else {
                     // PUNISHMENT: Ghost caught Pacman - end this agent's run
                     this.gameOver = true;
-                    console.log("PUNISHMENT: Ghost caught Pacman - ending this agent's run");
+                    console.log(`PUNISHMENT: Ghost caught Pacman - Generation ${this.generationCount}, Agent ${this.agentNumber} died!`);
+                    
+                    // Display game over message
+                    this.drawGameMessage(`Agent ${this.agentNumber} died!`, "#FF0000");
                     
                     // Calculate fitness for this run
                     const fitness = this.calculateFitness();
@@ -1136,98 +1170,79 @@ class AIGame {
         }
     }
     
-    // Score directions based on AI parameters
+    // Score available directions for AI decision making
     scoreDirections(directions, currentX, currentY) {
         const scores = {};
         
-        // If AI parameters aren't set, use defaults
-        const params = this.aiParameters || {
-            dotWeight: 10,
-            powerPelletWeight: 25,
-            ghostWeight: -10,
-            vulnerableGhostWeight: 8,
-            explorationWeight: 2
-        };
-        
-        // Score each direction
+        // For each direction, calculate a score
         for (const direction of directions) {
-            let score = 0;
+            // Convert direction string to vector
             const dirVector = DIRECTIONS[direction];
             
-            // Look ahead up to 5 cells
-            let dotSeen = false;
-            let powerPelletSeen = false;
-            let ghostDistance = 999;
-            let vulnerableGhostDistance = 999;
+            // Get the next position
+            const nextX = currentX + dirVector.x;
+            const nextY = currentY + dirVector.y;
             
-            // Search in this direction
-            for (let dist = 1; dist <= 5; dist++) {
-                const checkX = currentX + dirVector.x * dist;
-                const checkY = currentY + dirVector.y * dist;
-                
-                // Skip if out of bounds
-                if (checkY < 0 || checkY >= ROWS || checkX < 0 || checkX >= COLS) {
-                    continue;
+            // Start with a base score
+            let score = 0;
+            
+            // Check valid position
+            if (nextY >= 0 && nextY < ROWS && nextX >= 0 && nextX < COLS) {
+                // Check for dots (REWARD: Strongly prioritize eating dots)
+                if (this.maze[nextY][nextX] === 2) {
+                    score += this.aiParameters.dotWeight * 2.5; // Increased weight for dots
                 }
                 
-                // Check for wall
-                if (this.maze[checkY][checkX] === 1) {
-                    break; // Stop looking if we hit a wall
+                // Check for power pellets (REWARD: Very high value for power pellets)
+                if (this.maze[nextY][nextX] === 3) {
+                    score += this.aiParameters.powerPelletWeight * 1.5; // Increased weight for power pellets
                 }
                 
-                // Check for dot - weight decreases with distance
-                if (this.maze[checkY][checkX] === 2 && !dotSeen) {
-                    score += params.dotWeight / Math.pow(dist, 0.7);
-                    dotSeen = true;
-                }
-                
-                // Check for power pellet - higher weight
-                if (this.maze[checkY][checkX] === 3 && !powerPelletSeen) {
-                    score += params.powerPelletWeight / Math.pow(dist, 0.5);
-                    powerPelletSeen = true;
-                }
-                
-                // Check for ghosts in this cell
+                // Check for nearby ghosts (PUNISHMENT: Strong avoidance)
                 for (const ghost of this.ghosts) {
-                    const ghostCellX = Math.floor(ghost.x / CELL_SIZE);
-                    const ghostCellY = Math.floor((ghost.y - Y_OFFSET) / CELL_SIZE);
-                    
                     // Skip ghosts in the house
                     if (ghost.exitingHouse) continue;
                     
-                    if (ghostCellX === checkX && ghostCellY === checkY) {
-                        if (ghost.isVulnerable) {
-                            // Vulnerable ghost - we want to catch them
-                            if (dist < vulnerableGhostDistance) {
-                                vulnerableGhostDistance = dist;
-                            }
-                        } else {
-                            // Normal ghost - we want to avoid them
-                            if (dist < ghostDistance) {
-                                ghostDistance = dist;
-                            }
+                    // Ghost position in grid
+                    const ghostX = Math.floor(ghost.x / CELL_SIZE);
+                    const ghostY = Math.floor((ghost.y - Y_OFFSET) / CELL_SIZE);
+                    
+                    // Distance to this ghost
+                    const distance = Math.sqrt(
+                        Math.pow(nextX - ghostX, 2) + 
+                        Math.pow(nextY - ghostY, 2)
+                    );
+                    
+                    // Different behavior depending on ghost vulnerability
+                    if (ghost.isVulnerable) {
+                        // Only chase vulnerable ghosts if close enough
+                        if (distance < 5) {
+                            score += this.aiParameters.vulnerableGhostWeight * (6 - distance);
+                        }
+                    } else {
+                        // Avoid ghosts more strongly (exponential avoidance based on closeness)
+                        if (distance < 4) { // Increased detection range
+                            // Exponential penalty that gets much worse as distance decreases
+                            score += this.aiParameters.ghostWeight * Math.pow(4 - distance, 2);
                         }
                     }
                 }
+                
+                // Add exploration incentive
+                score += this.getExplorationScore(direction, currentX, currentY);
+                
+                // Strongly encourage forward movement when nothing interesting nearby
+                if (score === 0) {
+                    // Add slight incentive to move forward when no better options
+                    const pacmanDir = this.getDirectionName(this.pacman.direction);
+                    if (direction === pacmanDir) {
+                        score += 1;
+                    }
+                }
+            } else {
+                // Invalid direction, give it a very low score
+                score = -1000;
             }
-            
-            // Add ghost-related scores
-            if (ghostDistance < 999) {
-                // More negative for closer ghosts
-                score += params.ghostWeight / Math.pow(ghostDistance, 0.8);
-            }
-            
-            if (vulnerableGhostDistance < 999) {
-                // More positive for closer vulnerable ghosts
-                score += params.vulnerableGhostWeight / Math.pow(vulnerableGhostDistance, 0.6);
-            }
-            
-            // Add exploration score for directions with more empty space
-            const explorationScore = this.getExplorationScore(direction, currentX, currentY);
-            score += explorationScore * params.explorationWeight;
-            
-            // Add a small random factor to prevent getting stuck in patterns
-            score += Math.random() * 2; 
             
             scores[direction] = score;
         }
@@ -1337,8 +1352,8 @@ class AIGame {
         const dotsEaten = this.totalDots - this.dotsRemaining;
         const dotPercentage = dotsEaten / this.totalDots;
         
-        // Basic reward for dots eaten (exponential to reward progress)
-        const dotReward = Math.pow(dotPercentage * 10, 1.8) * 150;
+        // Basic reward for dots eaten (increased reward to emphasize dot-seeking behavior)
+        const dotReward = Math.pow(dotPercentage * 10, 1.5) * 200;
         
         // REWARD: Power pellets eaten
         const powerPelletReward = this.powerPelletCount * 100;
@@ -1359,17 +1374,23 @@ class AIGame {
         
         // PUNISHMENT: Major penalty if no dots were eaten
         if (dotsEaten === 0) {
-            fitness = Math.max(1, fitness / 10);
+            fitness = Math.max(1, fitness / 20); // Increased penalty for not eating dots
         }
         
         // REWARD: Major bonus for winning (eating all dots)
         if (dotsEaten === this.totalDots) {
-            fitness *= 3;
+            fitness *= 5; // Increased bonus for winning
         }
         
         console.log(`Fitness breakdown: Dots=${dotReward.toFixed(1)}, PowerPellets=${powerPelletReward}, GhostsEaten=${ghostsEatenReward}, Efficiency=${timeEfficiencyFactor.toFixed(2)}`);
         
         return Math.max(1, fitness);
+    }
+    
+    // Set the game speed (called from outside)
+    setGameSpeed(speedFactor) {
+        this.speedFactor = speedFactor;
+        console.log(`AI Game speed set to ${speedFactor}x`);
     }
 }
 

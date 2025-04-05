@@ -212,12 +212,33 @@ def get_learning_curve():
             'message': 'No learning data available yet'
         })
     
+    # Ensure all arrays have the same length to avoid dimension mismatch
+    min_length = min(
+        len(learning_data['generations']),
+        len(learning_data['fitness_scores']), 
+        len(learning_data['dots_eaten']),
+        len(learning_data['scores'])
+    )
+    
+    # Use only data up to the minimum length
+    generations = learning_data['generations'][:min_length]
+    fitness_scores = learning_data['fitness_scores'][:min_length]
+    dots_eaten = learning_data['dots_eaten'][:min_length]
+    scores = learning_data['scores'][:min_length]
+    
+    # Check if we have any data to plot
+    if min_length == 0:
+        return jsonify({
+            'status': 'error',
+            'message': 'Not enough learning data collected yet'
+        })
+    
     # Create the plot
     plt.figure(figsize=(10, 8))
     
     # Create subplot for fitness scores
     plt.subplot(3, 1, 1)
-    plt.plot(learning_data['generations'], learning_data['fitness_scores'], 'r-', label='Fitness')
+    plt.plot(generations, fitness_scores, 'r-', label='Fitness')
     plt.xlabel('Generation')
     plt.ylabel('Fitness Score')
     plt.title('Pacman AI Learning Progress')
@@ -226,7 +247,7 @@ def get_learning_curve():
     
     # Create subplot for dots eaten
     plt.subplot(3, 1, 2)
-    plt.plot(learning_data['generations'], learning_data['dots_eaten'], 'g-', label='Dots Eaten')
+    plt.plot(generations, dots_eaten, 'g-', label='Dots Eaten')
     plt.xlabel('Generation')
     plt.ylabel('Dots Eaten')
     plt.legend()
@@ -234,7 +255,7 @@ def get_learning_curve():
     
     # Create subplot for game scores
     plt.subplot(3, 1, 3)
-    plt.plot(learning_data['generations'], learning_data['scores'], 'b-', label='Game Score')
+    plt.plot(generations, scores, 'b-', label='Game Score')
     plt.xlabel('Generation')
     plt.ylabel('Score')
     plt.legend()

@@ -124,9 +124,9 @@
         
         /* Different colored mazes */
         #player-game {
-            background-color: #00796b; /* Teal */
-            border: 2px solid rgba(0, 0, 0, 0.7) !important;
-            box-shadow: 0 0 20px rgba(0, 0, 0, 0.7) !important;
+            background-color: #006a5e; /* Teal */
+            border: 2px solid rgb(0, 0, 0) !important;
+            box-shadow: 0 0 20px rgb(0, 0, 0) !important;
             animation: gradientBorder 8s infinite !important;
         }
         
@@ -495,6 +495,67 @@
                 margin-bottom: 5px;
             }
         }
+        
+        /* Enhanced game stats display */
+        .game-stats {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background-color: rgba(0, 0, 0, 0.7);
+            border-radius: 12px;
+            padding: 8px 15px;
+            margin-bottom: 15px;
+            width: 100%;
+            color: #fff;
+            font-size: 0.9rem;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+            border: 1px solid rgba(255, 215, 0, 0.3);
+        }
+        
+        .game-stats .score,
+        .game-stats .generation {
+            white-space: nowrap;
+            font-weight: 500;
+        }
+        
+        .game-stats span {
+            color: #ffd700;
+            font-weight: bold;
+            margin-left: 5px;
+        }
+        
+        .speed-dropdown {
+            display: flex;
+            align-items: center;
+            white-space: nowrap;
+        }
+        
+        .speed-dropdown span {
+            margin-right: 5px;
+            color: #fff;
+            font-weight: normal;
+        }
+        
+        #speed-selector {
+            background-color: rgba(0, 0, 0, 0.3);
+            color: #ffd700;
+            border: 1px solid rgba(255, 215, 0, 0.7);
+            border-radius: 4px;
+            padding: 3px 6px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            transition: all 0.3s ease;
+        }
+        
+        #speed-selector:hover {
+            background-color: rgba(0, 0, 0, 0.5);
+            box-shadow: 0 0 5px rgba(255, 215, 0, 0.5);
+        }
+        
+        #speed-selector option {
+            background-color: #121212;
+            color: #ffd700;
+        }
     </style>
 </head>
 <body>
@@ -512,7 +573,6 @@
         <div id="player-info" class="player-info">
             Welcome <span id="display-name"></span> from <span id="display-class"></span>!
             <button id="logout-btn" class="logout-btn">Logout</button>
-            <a href="/admin" class="admin-link">Admin</a>
         </div>
     </header>
     
@@ -532,8 +592,8 @@
             <div class="game-panel">
                 <h2>Your Game</h2>
                 <div class="game-stats">
-                    <div class="score">Score: <span id="player-score">0</span></div>
-                    <div class="lives">Lives: <span id="player-lives">3</span></div>
+                    <div class="score">Score:<span id="player-score">0</span></div>
+                    <div class="lives">Lives:<span id="player-lives">3</span></div>
                 </div>
                 <div class="game-controls">
                     <button id="start-game">Start Game</button>
@@ -557,8 +617,17 @@
             <div class="game-panel">
                 <h2>AI Game</h2>
                 <div class="game-stats">
-                    <div class="score">Score: <span id="ai-score">0</span></div>
-                    <div class="generation">Generation: <span id="ai-generation">0</span>/100</div>
+                    <div class="score">Score:<span id="ai-score">0</span></div>
+                    <div class="speed-dropdown">
+                        <span>Speed:</span>
+                        <select id="speed-selector">
+                            <option value="0.5">0.5x</option>
+                            <option value="1" selected>1x</option>
+                            <option value="2">2x</option>
+                            <option value="5">5x</option>
+                        </select>
+                    </div>
+                    <div class="generation">Generation:<span id="ai-generation">1</span>/100</div>
                 </div>
                 <div class="game-controls">
                     <button id="start-ai">Start AI</button>

@@ -15,9 +15,9 @@ let playerClass = null;
 const GENERATION_SIZE = 15;
 const MUTATION_RATE = 0.25;
 const PARAMETER_RANGE = {
-    dotWeight: { min: 1, max: 30 },
+    dotWeight: { min: 5, max: 40 },            // Increased to prioritize dot-seeking
     powerPelletWeight: { min: 15, max: 60 },
-    ghostWeight: { min: -30, max: -1 },
+    ghostWeight: { min: -50, max: -10 },       // Increased negative values for stronger ghost avoidance
     vulnerableGhostWeight: { min: 5, max: 25 },
     explorationWeight: { min: 0.5, max: 8 }
 };
@@ -144,6 +144,18 @@ function setupUIControls() {
     const startAIBtn = document.getElementById('start-ai');
     const resetAIBtn = document.getElementById('reset-ai');
     const showLearningBtn = document.getElementById('show-learning');
+    
+    // Set up speed control dropdown
+    const speedSelector = document.getElementById('speed-selector');
+    if (speedSelector) {
+        speedSelector.addEventListener('change', function() {
+            const speedValue = parseFloat(this.value);
+            if (aiGame) {
+                aiGame.setGameSpeed(speedValue);
+                console.log(`Speed set to ${speedValue}x`);
+            }
+        });
+    }
     
     // Modal elements
     const modal = document.getElementById('learning-curve-modal');
@@ -393,7 +405,7 @@ function nextAgent() {
         finishGeneration();
     } else {
         // Still have agents to run in this generation
-        setTimeout(() => runAgent(currentAgent), 1000);
+        setTimeout(() => runAgent(currentAgent), 500); // Reduced delay to speed up evolution
     }
 }
 
@@ -429,7 +441,7 @@ function finishGeneration() {
     if (evolutionInProgress) {
         setTimeout(() => {
             startNextGeneration();
-        }, 2000);
+        }, 1000); // Reduced delay between generations
     }
 }
 
@@ -705,13 +717,14 @@ function randomInRange(min, max) {
 
 // Update generation info in UI
 function updateGenerationInfo() {
-    const genInfoElement = document.getElementById('generation-info');
-    if (genInfoElement) {
-        genInfoElement.textContent = `Generation: ${generation}, Agents: ${agents.length}`;
+    // Update generation display
+    const generationElement = document.getElementById('ai-generation');
+    if (generationElement) {
+        generationElement.textContent = `${generation}`;
     }
     
-    // Update AI status and generation display
-    updateAIStatus(`Starting Generation ${generation}`);
+    // Update agent status
+    updateAIStatus(`Running Generation ${generation}, Agent ${currentAgent + 1}/${agents.length}`);
 }
 
 // Update agent info in UI

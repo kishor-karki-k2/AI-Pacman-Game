@@ -1,0 +1,462 @@
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+% Package imports
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithmic}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{tikz}
+\usetikzlibrary{shapes,arrows,positioning,fit,backgrounds}
+
+% Define color settings for code listings
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+
+% PacMan colors
+\definecolor{pacmanyellow}{RGB}{255,255,0}
+\definecolor{ghostred}{RGB}{255,0,0}
+\definecolor{ghostpink}{RGB}{255,182,193}
+\definecolor{ghostcyan}{RGB}{0,255,255}
+\definecolor{ghostorange}{RGB}{255,165,0}
+\definecolor{mazeblue}{RGB}{0,0,255}
+\definecolor{dotwhite}{RGB}{255,255,255}
+
+% Configure code listings style
+\lstdefinestyle{mystyle}{
+    backgroundcolor=\color{backcolour},   
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{blue},
+    numberstyle=\tiny\color{codegray},
+    stringstyle=\color{codepurple},
+    basicstyle=\ttfamily\footnotesize,
+    breakatwhitespace=false,         
+    breaklines=true,                 
+    captionpos=b,                    
+    keepspaces=true,                 
+    numbers=left,                    
+    numbersep=5pt,                  
+    showspaces=false,                
+    showstringspaces=false,
+    showtabs=false,                  
+    tabsize=2
+}
+\lstset{style=mystyle}
+
+\begin{document}
+
+\title{Implementation of Reinforcement Learning in a Web-Based PacMan Game Environment}
+
+\author{\IEEEauthorblockN{Kishor Karki}
+\IEEEauthorblockA{Department of Computer Science\\
+University of Texas Permian Basin\\
+karki\_k65395@utpb.edu}}
+
+\maketitle 
+
+\begin{abstract}
+In this paper, I describe how I used reinforcement learning in a web-based PacMan game environment. I implemented Q-learning for the popular arcade game, where the agent learns to avoid ghosts, eat dots, navigate a maze, and maximize its score through trial and error. The implementation features a responsive web interface built with Flask, allowing for wider accessibility and data collection. The system includes user authentication, performance tracking, and administrative capabilities for monitoring student engagement. I describe the implementation details, including state representation, action space, reward scheme, learning parameters, and web architecture. The outcomes demonstrate how the agent learns efficient strategies across multiple generations, improving game score, survival time, and dot collection effectiveness. Real-time visualization tools allow observation of the learning process, and the administrative dashboard enables educators to track student participation. Through this study, I demonstrated how reinforcement learning can solve sequential decision-making challenges in game settings while providing an accessible educational platform.
+\end{abstract}
+
+\begin{IEEEkeywords}
+reinforcement learning, Q-learning, PacMan, game AI, exploration-exploitation, pygame, web application, educational technology, Flask
+\end{IEEEkeywords}
+
+\section{Introduction}
+Reinforcement learning is a branch of machine learning where an agent learns by interacting with an environment and receiving rewards or penalties \cite{sutton2018reinforcement}. I chose PacMan because its clear rules and objectives make it an excellent platform to experiment with reinforcement learning algorithms \cite{rohlfshagen2011ms}. The game involves navigating a maze, collecting dots, and avoiding ghosts, which touches on important aspects like path planning, risk assessment, and reward optimization.
+
+In this paper, I describe my implementation of a Q-learning algorithm for the PacMan environment \cite{gallagher2003learning}, presented as a web-based application accessible through a browser. Q-learning is a model-free, value-based approach that trains an agent to make optimal decisions through repeated interaction with the environment \cite{russell2010artificial}. It encourages the agent to explore different actions and learn which ones lead to better outcomes.
+
+My implementation shows how an artificial agent can explore a game environment and develop strategies to maximize its score by learning from many generations of gameplay \cite{mnih2015human}. The main contributions of this project are:
+\begin{itemize}
+    \item A complete web-based PacMan game environment with adjustable parameters
+    \item Integration of a Q-learning algorithm for automated gameplay
+    \item A reward and punishment system that effectively guides learning to optimal actions
+    \item Visualization tools for monitoring the agent's performance and learning progress
+    \item User authentication and tracking system for educational deployments
+    \item Administrative dashboard for monitoring student engagement and exporting participation data
+    \item Ability for the AI to learn from human gameplay data \cite{baker2019emergent}
+\end{itemize}
+
+The web-based implementation enhances accessibility, making it easier for students and researchers to interact with reinforcement learning concepts without specialized software installation \cite{flask2010}. It also enables data collection across multiple users, providing insights into how different play styles can influence AI learning.
+
+\section{Related Work}
+Reinforcement learning has a long history in game environments, starting with TD-Gammon's use of temporal difference learning for backgammon \cite{tesauro1995temporal}. More recently, it has been shown that RL can achieve human-level performance in complex environments such as Atari games \cite{mnih2015human} and Go \cite{van2016deep}.
+
+For PacMan specifically, earlier work has explored a range of RL approaches. For example, Rohlfshagen and Lucas \cite{rohlfshagen2011ms} investigated evolutionary algorithms for PacMan controller evolution, and Gallagher and Ryan \cite{gallagher2003learning} compared several RL methods in the PacMan domain, highlighting challenges such as partial observability and high-dimensional state spaces.
+
+More recent work by Schrum et al. \cite{schrum2020pac} has explored neural-symbolic policy hierarchies for Ms. Pac-Man, demonstrating the potential for combining neural networks with symbolic representations to create effective game-playing agents. Meanwhile, Torrado et al. \cite{torrado2018deep} have extended reinforcement learning approaches to general video game AI, developing frameworks that can learn to play multiple games.
+
+My work builds on these foundations while prioritizing web accessibility and educational value. Unlike most previous implementations that require specialized software, my web-based approach makes reinforcement learning concepts more accessible to students and educators, allowing for broader engagement with AI concepts in educational settings.
+
+\section{Game Environment}
+\subsection{Environment Architecture}
+I built the PacMan game world environment using
+Pygame Library \cite{pygame2000}, which created a maze-based world environment where the agent can move in different directions, collect rewards, and interact with enemies. The environment has a number of most important elements:
+\begin{itemize}
+    \item \textbf{Maze}: Maze structure that identifies walls, corridors, and item
+    locations
+    \item \textbf{PacMan}: The player character controlled by the reinforcement learning agent
+    \item \textbf{Ghosts}: Enemy characters moving through pathfinding algorithms
+    \item \textbf{Dots}: Reward objects of small size dispersed within the maze
+    \item \textbf{Power Pellets}: Special items that offer larger rewards 
+\end{itemize}
+
+The game works in a loop where the agent takes an action, receives feedback in terms of rewards, and observes a new state, which is usual in reinforcement learning worlds \cite{sutton2018reinforcement}.
+
+\subsection{Game Layout}
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=8cm]{game frame.jpg}
+\caption{Layout of the PacMan game environment showing the maze structure, PacMan agent, ghosts, regular dots, and power pellets.}
+\label{fig:game_layout}
+\end{figure}
+
+The maze layout is defined in a configuration file, which allows for easy modifications and experiments with different levels of complexity. In this file, numerical values represent various elements:
+\begin{itemize}
+    \item 0: Empty space
+    \item 1: Wall
+    \item 2: Regular dot
+    \item 3: Power pellet
+    \item 4: PacMan starting position
+    \item 5: Ghost starting position
+\end{itemize}
+
+\section{Web-Based Implementation}
+\subsection{System Architecture}
+The system is implemented as a web application using the Flask framework \cite{flask2010}. This architecture provides several advantages over a traditional desktop application:
+
+\begin{itemize}
+    \item \textbf{Cross-platform accessibility}: Users can access the game from any device with a modern web browser
+    \item \textbf{Centralized data collection}: Game play and learning data can be collected and analyzed from multiple users
+    \item \textbf{Ease of deployment}: No installation required for end users
+    \item \textbf{Simplified updates}: Changes can be pushed to all users simultaneously
+\end{itemize}
+
+The web application follows a client-server architecture:
+\begin{itemize}
+    \item \textbf{Backend}: Flask server handles user authentication, data storage, and serves the application
+    \item \textbf{Frontend}: JavaScript-based game implementation runs in the browser using HTML5 Canvas \cite{html5canvas2011}
+    \item \textbf{Communication}: API endpoints facilitate data exchange between frontend and backend
+\end{itemize}
+
+\subsection{User Interface}
+The user interface consists of several key components:
+
+\begin{itemize}
+    \item \textbf{Login Page}: Collects user information for tracking purposes
+    \item \textbf{Game Interface}: Canvas-based rendering of the PacMan game
+    \item \textbf{Controls}: Options to switch between manual play and AI modes
+    \item \textbf{Learning Visualization}: Real-time graphs showing AI performance metrics
+    \item \textbf{Administrative Dashboard}: For instructors to monitor student engagement
+\end{itemize}
+
+\subsection{User Authentication and Tracking}
+The system includes basic authentication to identify users without requiring complex password management:
+
+\begin{itemize}
+    \item Users enter their name and class/group identifier
+    \item The system logs registration time and subsequent login times
+    \item Each user's game performance and AI training contributions are tracked
+    \item Instructors can export user participation data as Excel spreadsheets
+\end{itemize}
+
+This tracking functionality is particularly valuable in educational settings where instructors want to monitor student engagement with the reinforcement learning concepts.
+
+\subsection{Working Architecture}
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[scale=0.8, transform shape,
+    box/.style={rectangle, draw, rounded corners=5pt, thick, fill=blue!15, 
+        text centered, minimum height=1cm, minimum width=2.2cm, font=\sffamily\small},
+    arrow/.style={->, >=stealth, thick}
+]
+    % Define nodes with better spacing
+    \node[box] (agent) {RL Agent};
+    \node[box, right=3.5cm of agent] (environment) {Game Env.};
+    \node[box, below=2cm of agent] (qtable) {Q-Table};
+    \node[box, above=2cm of environment] (browser) {Web Browser};
+    \node[box, below=2cm of environment] (server) {Flask Server};
+    
+    % Policy and state
+    \node[left=0.6cm of agent, font=\small] (state) {State $s$};
+    \node[above=0.8cm of agent, font=\small] (policy) {Policy $\pi$};
+    
+    % Connect the nodes with arrows
+    \draw[arrow] (agent) -- node[above, midway, font=\small] {Action $a$} (environment);
+    \draw[arrow] (environment) to[bend right=25] node[below, midway, font=\small] {Reward $r$, State $s'$} (agent);
+    
+    % Two-way arrow between agent and Q-table
+    \draw[arrow] (agent) -- node[left, near start, font=\small] {Update} (qtable);
+    \draw[arrow] (qtable) -- node[right, near start, font=\small] {Query} (agent);
+    
+    % Connect browser, environment and server
+    \draw[arrow] (browser) -- (environment);
+    \draw[arrow] (environment) -- (browser);
+    \draw[arrow] (browser) to[bend left=15] node[right, midway, font=\small] {Game Data} (server);
+    \draw[arrow] (server) to[bend left=15] node[left, midway, font=\small] {User Data} (browser);
+    
+    % Connect state and policy
+    \draw[arrow] (state) -- (agent);
+    \draw[arrow] (agent) -- (policy);
+\end{tikzpicture}
+
+\caption{Architecture diagram showing the interaction between the client-side agent, environment, Q-learning components, and server-side data management.}
+\label{fig:architecture}
+\end{figure}
+
+The system works as follows:
+\begin{enumerate}
+    \item Users authenticate through the web interface, with data stored on the Flask server
+    \item The game environment initializes in the browser using JavaScript
+    \item For AI mode:
+    \begin{itemize}
+        \item The agent observes the current state of the environment
+        \item Based on this state and the Q-table, the agent selects an action using the epsilon-greedy policy
+        \item The environment processes the action, updates PacMan's position, and checks for dot collection and ghost collisions
+        \item The environment returns a reward and the new state
+        \item The Q-table is updated using the Q-learning update rule
+    \end{itemize}
+    \item For manual mode:
+    \begin{itemize}
+        \item The user controls PacMan using keyboard inputs
+        \item The system records state transitions, actions, and rewards
+        \item This data can be used to train the AI
+    \end{itemize}
+    \item Learning data (scores, dots eaten, fitness values) is periodically sent to the server
+    \item The server generates learning curves and stores player participation data
+    \item Administrators can access dashboards to view and export user engagement metrics
+\end{enumerate}
+
+\section{Implementation Details}
+\subsection{Game Components}
+The project is structured into several modules:
+
+\begin{itemize}
+    \item \textbf{Backend (Python/Flask):}
+    \begin{itemize}
+        \item \textbf{app.py}: The main Flask application, handling routes, user tracking, and data visualization
+        \item \textbf{\_\_init\_\_.py}: Application initialization
+    \end{itemize}
+    
+    \item \textbf{Frontend (JavaScript):}
+    \begin{itemize}
+        \item \textbf{main.js}: Handles application initialization and UI interactions
+        \item \textbf{constants.js}: Game constants and configuration parameters
+        \item \textbf{manual\_game.js}: Implementation of the manual gameplay mode
+        \item \textbf{ai\_game.js}: Implementation of the AI gameplay mode
+        \item \textbf{ai.js}: Q-learning algorithm implementation
+    \end{itemize}
+    
+    \item \textbf{Templates and Static Files:}
+    \begin{itemize}
+        \item \textbf{index.html}: Main game interface
+        \item \textbf{loginpage.html}: User authentication interface
+        \item \textbf{admin.html}: Administrative dashboard
+        \item CSS and image assets
+    \end{itemize}
+\end{itemize}
+
+These modules work together to create a complete game environment that serves as both an interactive game and a reinforcement learning testbed.
+
+\subsection{Data Collection and Storage}
+The system collects several types of data:
+
+\begin{itemize}
+    \item \textbf{User information}: Name, class, registration time, last login
+    \item \textbf{Learning metrics}: Generation number, fitness scores, dots eaten, game scores
+    \item \textbf{Game state transitions}: For training the AI from human gameplay
+\end{itemize}
+
+Data is temporarily stored in server memory during a session and can be exported to Excel format for further analysis.
+
+\subsection{Visualization}
+I included visualization components to monitor the gameplay and learning progress:
+\begin{itemize}
+    \item Real-time game rendering using HTML5 Canvas
+    \item Display of the current score, generation number, and dots eaten
+    \item Interactive learning curves showing fitness scores, dots eaten, and game scores over generations
+    \item Administrative dashboard with user participation statistics
+\end{itemize}
+These visualizations help users gain insights into the agent's behavior and allow instructors to track student engagement.
+
+\subsection{Learning Curve}
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=8cm]{learning_curve.png}
+\caption{Sample learning curve showing average score, dots eaten, and fitness score over training generations.}
+\label{fig:learning_curve}
+\end{figure}
+
+The system generates learning curves that visualize three key metrics:
+\begin{itemize}
+    \item \textbf{Fitness scores}: A combined measure of performance
+    \item \textbf{Dots eaten}: How effectively the agent collects rewards
+    \item \textbf{Game scores}: The total points accumulated per episode
+\end{itemize}
+
+These curves help users understand how the agent's performance improves over successive generations.
+
+\section{Reinforcement Learning Implementation}
+\subsection{Q-Learning Algorithm}
+I have used Q-learning, a value-based reinforcement learning algorithm that estimates the value of state-action pairs \cite{sutton2018reinforcement}. The algorithm is defined by the equation below:
+\begin{equation}
+Q(s,a) \leftarrow Q(s,a) + \alpha [r + \gamma \max_{a'} Q(s',a') - Q(s,a)]
+\end{equation}
+where:
+\begin{itemize}
+    \item $Q(s,a)$ is the value of taking action $a$ in state $s$
+    \item $\alpha$ is the learning rate
+    \item $r$ is the reward received
+    \item $\gamma$ is the discount factor
+    \item $s'$ is the new state
+    \item $\max_{a'} Q(s',a')$ is the maximum value achievable from the new state
+\end{itemize}
+
+I store the Q-values in a JavaScript object that maps state-action pairs to expected rewards and update this table when the agent interacts with the environment. This implementation allows the Q-learning to run directly in the browser, making the reinforcement learning process more accessible to users without requiring server-side computation.
+
+\subsection{State Representation}
+The representation of the state is a crucial component of reinforcement learning \cite{russell2010artificial}. I created the state as an object which consists of:
+\begin{itemize}
+    \item PacMan's current grid position in terms of (gridX, gridY)
+    \item PacMan's current direction
+    \item Detection of walls in four directions (up, right, down, left)
+    \item Distance to the nearest ghost
+    \item Direction to the nearest ghost
+    \item Current power mode status (whether power pellets are active)
+\end{itemize}
+
+This approach provides enough detail for decision-making while keeping the state space manageable by using relative positions and simplified representations.
+
+\subsection{Action Space}
+The action space consists of four movements:
+\begin{itemize}
+    \item Up
+    \item Down
+    \item Left
+    \item Right
+\end{itemize}
+Each action moves PacMan in the corresponding direction. 
+
+\subsection{Reward and Punishment Structure}
+I designed the reward and punishment structure to define the agent behaviors that lead to success in the game:
+\begin{itemize}
+    \item Small reward for staying alive (0.1 per step)
+    \item Reward for collecting dots (scaled by points earned)
+    \item Large penalty for collisions with ghosts (-100)
+    \item Substantial reward for completing the level (+500)
+\end{itemize}
+
+\subsection{Exploration-Exploitation Strategy}
+The agent uses an epsilon-greedy strategy which balances exploration and exploitation \cite{sutton2018reinforcement}:
+
+\begin{itemize}
+    \item With probability $\epsilon$ (exploration rate), choose a random action
+    \item With probability $1-\epsilon$, choose the action with the highest Q-value
+\end{itemize}
+
+The exploration rate decays over time according to the formula:
+\begin{equation}
+\epsilon_{new} = \max(\epsilon_{min}, \epsilon_{old} \times \epsilon_{decay})
+\end{equation}
+
+This decay encourages the agent to explore extensively in early generations and gradually transition to exploiting its accumulated knowledge in later generations.
+
+\subsection{Learning from Human Play}
+A unique feature of this implementation is the ability for the AI to learn from human gameplay \cite{baker2019emergent}:
+
+\begin{itemize}
+    \item The system records state transitions during human gameplay
+    \item It extracts actions taken by the human player
+    \item It calculates rewards based on the same reward structure
+    \item These experiences are used to update the Q-table
+\end{itemize}
+
+This approach allows the AI to bootstrap its learning from human demonstrations, potentially accelerating the learning process and helping it discover effective strategies more quickly \cite{ammar2014automated}.
+
+\section{Results and Discussion}
+\subsection{Learning Performance}
+The Q-learning agent which I implemented demonstrates that it can learn effective strategies for the PacMan environment \cite{mnih2015human} and my observations include:
+\begin{itemize}
+    \item The agent starts to navigate with greater purpose instead of moving aimlessly
+    \item It learns to prioritize eating dots while keeping a safe distance from ghosts
+    \item Over the course of multiple generations, performance indicators like average score and survival time slowly improve
+    \item The performance eventually stabilizes as the agent converges toward an optimal policy \cite{sutton2018reinforcement}
+    \item Learning from human gameplay data accelerates the learning process compared to starting from scratch \cite{baker2019emergent}
+\end{itemize}
+
+\subsection{Web Application Performance}
+The web-based implementation provides several benefits and challenges:
+
+\begin{itemize}
+    \item \textbf{Accessibility}: The system successfully enables access from various devices without installation requirements
+    \item \textbf{Performance}: JavaScript implementation of Q-learning runs efficiently in modern browsers
+    \item \textbf{Data Collection}: The system effectively tracks user participation and learning metrics
+    \item \textbf{User Experience}: Interactive visualizations help users understand the reinforcement learning process
+    \item \textbf{Administrative Tools}: The dashboard provides valuable insights for instructors monitoring student engagement
+\end{itemize}
+
+\subsection{Challenges and Limitations}
+During the project, I encountered several obstacles:
+\begin{itemize}
+    \item \textbf{Large state space:} Numerous positions make it difficult for the agent to generalize across situations \cite{van2016deep}
+    
+    \item \textbf{Delayed rewards:} Long paths to travel to get rewards in some mazes slowed the learning progress \cite{sutton2018reinforcement}
+    
+    \item \textbf{Suboptimal strategies:} The agent might settle for strategies that work well in some areas but are not the best overall \cite{torrado2018deep}
+    
+    \item \textbf{Browser limitations:} JavaScript memory constraints limit the size of the Q-table in complex environments
+    
+    \item \textbf{Network dependency:} The web-based implementation requires stable internet connectivity for data collection
+    
+    \item \textbf{Simplified state representation:} To run efficiently in browsers, the state space had to be simplified compared to what might be possible in a native application \cite{schrum2020pac}
+\end{itemize}
+
+\section{Conclusion and Future Work}
+In conclusion, I demonstrated a complete implementation of a Q-learning agent for the PacMan game environment in a web-based platform. The outcome shows that Q-learning can effectively teach an agent to navigate and play well within this environment, with perceptible improvements in performance over time \cite{mnih2015human}. This project provides a flexible framework for experimenting with reinforcement learning parameters and approaches while making the technology accessible through web browsers.
+
+The web-based implementation successfully addresses the accessibility challenges of traditional AI applications, allowing users to engage with reinforcement learning concepts without specialized software installation \cite{flask2010}. The user tracking and administrative features enhance its value as an educational tool, enabling instructors to monitor student engagement and learning progression.
+
+For future work, I plan to explore:
+\begin{itemize}
+    \item More advanced algorithms, such as Deep Q-Networks (DQN), adapted for browser environments \cite{van2016deep}
+    \item Server-side training capabilities for handling more complex state representations
+    \item Persistent data storage using databases instead of in-memory storage
+    \item Multiplayer capabilities where multiple human players can compete with AI agents
+    \item Mobile-optimized interface with touch controls
+    \item Enhanced administrative tools for classroom management
+    \item Integration with learning management systems (LMS) through LTI standards
+    \item Collaborative learning features where students can share and evaluate AI agents \cite{baker2019emergent}
+    \item Data analytics dashboard for deeper insights into learning patterns
+\end{itemize}
+
+This project serves as both a practical demonstration of reinforcement learning principles and a foundation for future research in game AI, reinforcement learning applications, and educational technology.
+
+\section*{Acknowledgment}
+I would like to express my gratitude towards the open-source community for developing and maintaining the tools and libraries that made this work possible, particularly Flask, Pygame, NumPy, and the various JavaScript libraries utilized in this project.
+
+\begin{thebibliography}{00}
+\bibitem{tesauro1995temporal} G. Tesauro, "Temporal difference learning and TD-Gammon," \emph{Communications of the ACM}, vol. 38, no. 3, pp. 58–68, 1995.
+\bibitem{mnih2015human} V. Mnih et al., "Human-level control through deep reinforcement learning," \emph{Nature}, vol. 518, no. 7540, pp. 529–533, 2015.
+\bibitem{rohlfshagen2011ms} P. Rohlfshagen and S. M. Lucas, "Ms pac-man versus ghost team CEC 2011 competition," in \emph{2011 IEEE Congress of Evolutionary Computation (CEC)}, 2011, pp. 70–77.
+\bibitem{gallagher2003learning} M. Gallagher and A. Ryan, "Learning to play Pac-Man: An evolutionary, rule-based approach," in \emph{The 2003 Congress on Evolutionary Computation}, 2003, pp. 2462–2469.
+\bibitem{sutton2018reinforcement} R. S. Sutton and A. G. Barto, \emph{Reinforcement Learning: An Introduction}, 2nd ed. Cambridge, MA, USA: MIT Press, 2018.
+\bibitem{van2016deep} H. van Hasselt, A. Guez, and D. Silver, "Deep reinforcement learning with double Q-learning," in \emph{Proceedings of the Thirtieth AAAI Conference on Artificial Intelligence}, 2016, pp. 2094–2100.
+\bibitem{schrum2020pac} J. Schrum, J. Schneider, and R. Miikkulainen, "Solving Ms. Pac-Man with a neural-symbolic policy hierarchy," in \emph{Genetic and Evolutionary Computation Conference (GECCO)}, 2020, pp. 229–237.
+\bibitem{torrado2018deep} R. R. Torrado et al., "Deep reinforcement learning for general video game AI," in \emph{2018 IEEE Conference on Computational Intelligence and Games (CIG)}, 2018, pp. 1–8.
+\bibitem{flask2010} M. Grinberg, \emph{Flask Web Development: Developing Web Applications with Python}, 2nd ed. O'Reilly Media, 2018.
+\bibitem{pygame2000} P. Shinners, "PyGame - Python Game Development," in \emph{PyCon 2011}, Atlanta, GA, 2011.
+\bibitem{html5canvas2011} D. Geary, \emph{Core HTML5 Canvas: Graphics, Animation, and Game Development}, 1st ed. Prentice Hall, 2012.
+\bibitem{baker2019emergent} B. Baker et al., "Emergent tool use from multi-agent autocurricula," in \emph{International Conference on Learning Representations (ICLR)}, 2020.
+\bibitem{ammar2014automated} H. B. Ammar et al., "Automated transfer in reinforcement learning," in \emph{Twenty-Eighth AAAI Conference on Artificial Intelligence}, 2014.
+\bibitem{russell2010artificial} S. Russell and P. Norvig, \emph{Artificial Intelligence: A Modern Approach}, 3rd ed. Upper Saddle River, NJ: Prentice Hall, 2010.
+\end{thebibliography}
+
+\end{document} 
