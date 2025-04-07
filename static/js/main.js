@@ -12,14 +12,15 @@ let playerName = null;
 let playerClass = null;
 
 // Evolution parameters
-const GENERATION_SIZE = 15;
-const MUTATION_RATE = 0.25;
+const GENERATION_SIZE = 20;
+const MUTATION_RATE = 0.3;
+const ELITE_PERCENTAGE = 0.3;
 const PARAMETER_RANGE = {
-    dotWeight: { min: 5, max: 40 },            // Increased to prioritize dot-seeking
-    powerPelletWeight: { min: 15, max: 60 },
-    ghostWeight: { min: -50, max: -10 },       // Increased negative values for stronger ghost avoidance
-    vulnerableGhostWeight: { min: 5, max: 25 },
-    explorationWeight: { min: 0.5, max: 8 }
+    dotWeight: { min: 8, max: 50 },         // Increased max value for dot-seeking
+    powerPelletWeight: { min: 20, max: 80 }, // Increased values for power pellets
+    ghostWeight: { min: -70, max: -15 },     // Stronger ghost avoidance
+    vulnerableGhostWeight: { min: 10, max: 40 }, // Better vulnerable ghost chasing
+    explorationWeight: { min: 1, max: 10 }    // Increased exploration weight
 };
 
 // Evolution state
@@ -29,9 +30,64 @@ let agents = [];
 let bestAgents = [];
 let evolutionInProgress = false;
 
+// Q-learning variables
+let qTable = {}; // State-action pairs and Q-values
+let currentState = null;
+let currentAction = null;
+let learningRate = 0.1; // Alpha - how much to update Q-values
+let discountFactor = 0.9; // Gamma - importance of future rewards
+let explorationRate = 0.3; // Epsilon - exploration vs exploitation
+let maxExplorationRate = 0.3;
+let minExplorationRate = 0.01;
+let cumulativeReward = 0;
+let totalEpisodes = 0; // Track total episodes
+
+// Track Q-learning data for visualization
+let episodeRewards = [];
+let episodeScores = [];
+let episodeQTableSizes = [];
+let episodeExplorationRates = [];
+let learningChart = null;
+
+// Create ghost SVG image data URLs
+function createGhostImages() {
+    // Generate data URLs for each ghost color
+    const ghostColors = {
+        'red': '#FF0000',
+        'pink': '#FFB8FF',
+        'blue': '#00FFFF',
+        'orange': '#FFB852',
+        'vulnerable': '#2121FF'
+    };
+    
+    // Base ghost SVG template
+    const ghostSVG = (color) => `
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 50 50" width="50" height="50">
+        <path d="M 25 2 C 15.5 2 8 9.5 8 19 L 8 27.3125 C 8 28.9125 8.5 30.3 9.5 31.5 L 12.6875 35.5 C 13.3875 36.4 13.3125 38.0125 12.3125 38.8125 L 6.6875 43.1875 C 5.7875 43.9875 5.7 45.5125 6.5 46.3125 C 7.2 47.0125 8.7125 47.0875 9.8125 46.1875 L 16.5 41.3125 C 18.1 40.0125 20.3 40.5125 21.5 42.3125 L 23.8125 46.5 C 24.4125 47.8 26.6 47.8 27.1 46.5 L 29.5 42.3125 C 30.7 40.5125 32.9 40.0125 34.5 41.3125 L 41.1875 46.1875 C 42.2875 47.0875 43.8 47.0125 44.5 46.3125 C 45.3 45.5125 45.2125 43.9875 44.3125 43.1875 L 38.6875 38.8125 C 37.7875 38.0125 37.7125 36.4 38.3125 35.5 L 41.5 31.5 C 42.5 30.3 43 28.9125 43 27.3125 L 43 19 C 43 9.5 35.5 2 26 2 L 25 2 z" fill="${color}"/>
+        <circle cx="17" cy="19" r="5" fill="white"/>
+        <circle cx="17" cy="19" r="2" fill="black"/>
+        <circle cx="33" cy="19" r="5" fill="white"/>
+        <circle cx="33" cy="19" r="2" fill="black"/>
+    </svg>`;
+    
+    // Convert SVGs to data URLs
+    for (const [name, color] of Object.entries(ghostColors)) {
+        const svg = ghostSVG(color);
+        const dataURL = 'data:image/svg+xml;base64,' + btoa(svg);
+        
+        // Create CSS rules for each ghost type
+        const style = document.createElement('style');
+        style.textContent = `.ghost-${name} { background-image: url("${dataURL}"); }`;
+        document.head.appendChild(style);
+    }
+}
+
 // Initialize the application
 window.addEventListener('DOMContentLoaded', () => {
     console.log('Initializing Pacman game...');
+    
+    // Create ghost images
+    createGhostImages();
     
     // Get player information from localStorage
     playerName = localStorage.getItem('pacman_player_name');
@@ -43,18 +99,66 @@ window.addEventListener('DOMContentLoaded', () => {
         return;
     }
     
-    // Initialize constants first
+    // Check for required constants
+    if (!checkRequiredConstants()) return;
+    
+    // Initialize games
+    initializeGames();
+    
+    // Set up UI and game elements
+    setupUIControls();
+    initializeAIPopulation();
+    makeAllPanelsVisible();
+    
+    // Initialize floating ghosts
+    initFloatingGhosts();
+    
+    // Show ready status
+    updateAIStatus("Ready to start AI learning");
+});
+
+// Check if required constants are loaded
+function checkRequiredConstants() {
     if (typeof CELL_SIZE === 'undefined' || typeof COLS === 'undefined' || typeof ROWS === 'undefined') {
         console.error('Game constants not loaded! Make sure constants.js is loaded first.');
         alert('Game initialization failed. Please check the console for details.');
-        return;
+        return false;
     }
-    
-    // Fix canvas styling
+    return true;
+}
+
+// Initialize both game instances
+function initializeGames() {
+    try {
+        // Initialize manual game
+        manualGame = new ManualGame('player-game');
+        console.log('Manual game initialized successfully');
+        
+        // Initialize AI game
+        aiGame = new AIGame('ai-game');
+        console.log('AI game initialized successfully');
+        
+        // Style the canvases
+        styleGameCanvases();
+        
+        // Force initial render
+        manualGame.render();
+        
+        if (aiGame) {
+            aiGame.initPacman(); // Ensure Pacman is created
+            aiGame.render();
+        }
+    } catch (error) {
+        console.error('Failed to initialize games:', error);
+    }
+}
+
+// Apply styles to game canvases
+function styleGameCanvases() {
     const playerCanvas = document.getElementById('player-game');
     const aiCanvas = document.getElementById('ai-game');
     
-    // Apply direct styles to ensure canvases are visible
+    // Apply common styles to player canvas
     if (playerCanvas) {
         playerCanvas.style.display = 'block';
         playerCanvas.style.border = '2px solid #00BCA9';
@@ -62,11 +166,11 @@ window.addEventListener('DOMContentLoaded', () => {
         playerCanvas.style.boxShadow = '0 0 15px rgba(0, 188, 170, 0.7)';
         playerCanvas.style.imageRendering = 'pixelated';
         playerCanvas.style.margin = '0 auto';
-        //playerCanvas.style.background = '#000'; // Ensure black background
-    } else {
-        console.error('Player game canvas not found!');
+        playerCanvas.style.position = 'relative';
+        playerCanvas.style.zIndex = '10';
     }
     
+    // Apply styles to AI canvas
     if (aiCanvas) {
         aiCanvas.style.display = 'block';
         aiCanvas.style.border = '2px solid rgba(132, 0, 255, 0.95)';
@@ -75,75 +179,87 @@ window.addEventListener('DOMContentLoaded', () => {
         aiCanvas.style.imageRendering = 'pixelated';
         aiCanvas.style.margin = '0 auto';
         aiCanvas.style.background = '#9a7cbc'; // Slightly darker purple
-        aiCanvas.style.zIndex = '5'; // Ensure it's above other elements
-    } else {
-        console.error('AI game canvas not found!');
+        aiCanvas.style.position = 'relative';
+        aiCanvas.style.zIndex = '10'; // Ensure it's above ghost elements
     }
-    
-    // Initialize manual game
-    try {
-        manualGame = new ManualGame('player-game');
-        console.log('Manual game initialized successfully');
-    } catch (error) {
-        console.error('Failed to initialize manual game:', error);
-    }
-    
-    // Initialize AI game
-    try {
-        aiGame = new AIGame('ai-game');
-        console.log('AI game initialized successfully');
-    } catch (error) {
-        console.error('Failed to initialize AI game:', error);
-    }
-    
-    // Set up UI controls
-    setupUIControls();
-    
-    // Initialize the AI population
-    initializeAIPopulation();
-    
-    // Force render both games initially to ensure they display properly
-    if (manualGame) {
-        manualGame.render();
-    }
-    
-    if (aiGame) {
-        aiGame.initPacman(); // Ensure Pacman is created
-        aiGame.render();
-    }
-    
-    // Make both panels visible immediately
-    makeAllPanelsVisible();
-    
-    // Set AI game as locked initially
-    lockAIGame();
-    
-    // Show message that manual game must be played first
-    updateAIStatus("Play manual game first");
-});
+}
 
 // Set up UI controls
 function setupUIControls() {
-    // Mode toggle - using the panel headings (for visual feedback only, not for switching)
-    const playerPanel = document.querySelector('.game-panel h2');
-    const aiPanel = document.querySelectorAll('.game-panel h2')[1];
+    // Set cursor style for panel headings
+    const gamePanelHeadings = document.querySelectorAll('.game-panel h2');
+    gamePanelHeadings.forEach(heading => {
+        if (heading) heading.style.cursor = 'pointer';
+    });
     
-    if (playerPanel) {
-        playerPanel.style.cursor = 'pointer';
+    // Get control buttons
+    const buttons = {
+        startGame: document.getElementById('start-game'),
+        resetGame: document.getElementById('reset-game'),
+        startAI: document.getElementById('start-ai'),
+        resetAI: document.getElementById('reset-ai')
+    };
+    
+    // Set up button event listeners
+    if (buttons.startGame) {
+        buttons.startGame.addEventListener('click', () => manualGame?.start());
     }
     
-    if (aiPanel) {
-        aiPanel.style.cursor = 'pointer';
+    if (buttons.resetGame) {
+        buttons.resetGame.addEventListener('click', () => manualGame?.reset());
     }
     
-    // Player game controls
-    const startGameBtn = document.getElementById('start-game');
-    const resetGameBtn = document.getElementById('reset-game');
+    if (buttons.startAI) {
+        buttons.startAI.addEventListener('click', startAIGame);
+    }
     
-    // AI game controls
-    const startAIBtn = document.getElementById('start-ai');
-    const resetAIBtn = document.getElementById('reset-ai');
+    if (buttons.resetAI) {
+        buttons.resetAI.addEventListener('click', () => {
+            // Reset the AI game and Q-learning
+            aiGame?.reset();
+            
+            // Reset Q-learning variables
+            qTable = {};
+            explorationRate = maxExplorationRate;
+            generation = 1;
+            totalEpisodes = 0;
+            
+            // Reset visualization data
+            episodeRewards = [];
+            episodeScores = [];
+            episodeQTableSizes = [];
+            episodeExplorationRates = [];
+            
+            // Update UI with proper generation format
+            const genCounter = document.getElementById("gen-counter");
+            if (genCounter) genCounter.textContent = `${generation}/100`;
+            
+            updateAIStatus("AI learning reset. Ready to start.");
+        });
+    }
+    
+    // Set up Show Learning button
     const showLearningBtn = document.getElementById('show-learning');
+    if (showLearningBtn) {
+        showLearningBtn.addEventListener('click', showLearningGraph);
+    }
+    
+    // Set up modal close button
+    const closeModal = document.getElementsByClassName('close')[0];
+    if (closeModal) {
+        closeModal.addEventListener('click', () => {
+            const modal = document.getElementById('learning-modal');
+            if (modal) modal.style.display = 'none';
+        });
+    }
+    
+    // Close modal when clicking outside of it
+    window.addEventListener('click', (event) => {
+        const modal = document.getElementById('learning-modal');
+            if (event.target === modal) {
+                modal.style.display = 'none';
+        }
+    });
     
     // Set up speed control dropdown
     const speedSelector = document.getElementById('speed-selector');
@@ -153,77 +269,6 @@ function setupUIControls() {
             if (aiGame) {
                 aiGame.setGameSpeed(speedValue);
                 console.log(`Speed set to ${speedValue}x`);
-            }
-        });
-    }
-    
-    // Modal elements
-    const modal = document.getElementById('learning-curve-modal');
-    const closeModalBtn = document.querySelector('.close');
-    
-    if (startGameBtn) {
-        startGameBtn.addEventListener('click', function() {
-            if (manualGame) {
-                manualGame.start();
-            }
-        });
-    }
-    
-    if (resetGameBtn) {
-        resetGameBtn.addEventListener('click', function() {
-            if (manualGame) {
-                manualGame.reset();
-            }
-        });
-    }
-    
-    if (startAIBtn) {
-        startAIBtn.addEventListener('click', function() {
-            if (isAIGameLocked()) {
-                alert('Play the manual game first to unlock AI mode');
-                return;
-            }
-            
-            if (evolutionInProgress) {
-                stopEvolution();
-                startAIBtn.textContent = 'Start AI';
-            } else {
-                startEvolution();
-                startAIBtn.textContent = 'Stop AI';
-            }
-        });
-    }
-    
-    if (resetAIBtn) {
-        resetAIBtn.addEventListener('click', function() {
-            if (isAIGameLocked()) {
-                alert('Play the manual game first to unlock AI mode');
-                return;
-            }
-            
-            stopEvolution();
-            initializeAIPopulation();
-            startAIBtn.textContent = 'Start AI';
-        });
-    }
-    
-    // Setup Show Learning button
-    if (showLearningBtn) {
-        showLearningBtn.addEventListener('click', function() {
-            showLearningCurve();
-        });
-    }
-    
-    // Setup modal close button
-    if (closeModalBtn && modal) {
-        closeModalBtn.addEventListener('click', function() {
-            modal.style.display = 'none';
-        });
-        
-        // Close modal when clicking outside
-        window.addEventListener('click', function(event) {
-            if (event.target === modal) {
-                modal.style.display = 'none';
             }
         });
     }
@@ -240,91 +285,29 @@ function setupUIControls() {
 
 // Make all game panels visible
 function makeAllPanelsVisible() {
-    const manualPanel = document.querySelectorAll('.game-panel-container')[0];
-    const aiPanel = document.querySelectorAll('.game-panel-container')[1];
+    const panels = document.querySelectorAll('.game-panel-container');
     
-    if (manualPanel) {
-        manualPanel.style.opacity = '1';
-        const canvasContainer = manualPanel.querySelector('.canvas-container');
+    // Apply styles to manual panel
+    if (panels[0]) {
+        panels[0].style.opacity = '1';
+        const canvasContainer = panels[0].querySelector('.canvas-container');
         if (canvasContainer) {
             canvasContainer.style.border = '2px solid rgba(0, 188, 170, 0.7)';
         }
     }
     
-    if (aiPanel) {
-        aiPanel.style.opacity = '1';
-        const canvasContainer = aiPanel.querySelector('.canvas-container');
+    // Apply styles to AI panel
+    if (panels[1]) {
+        panels[1].style.opacity = '1';
+        const canvasContainer = panels[1].querySelector('.canvas-container');
         if (canvasContainer) {
             canvasContainer.style.border = '2px solid rgba(132, 0, 255, 0.7)';
         }
     }
     
     // Force render both games
-    if (manualGame) {
-        manualGame.render();
-    }
-    
-    if (aiGame) {
-        aiGame.render();
-    }
-}
-
-// Lock AI game (disable controls)
-function lockAIGame() {
-    const aiStartBtn = document.getElementById('start-ai');
-    const aiResetBtn = document.getElementById('reset-ai');
-    
-    if (aiStartBtn) {
-        aiStartBtn.disabled = true;
-        aiStartBtn.style.opacity = '0.5';
-        aiStartBtn.style.cursor = 'not-allowed';
-    }
-    
-    if (aiResetBtn) {
-        aiResetBtn.disabled = true;
-        aiResetBtn.style.opacity = '0.5';
-        aiResetBtn.style.cursor = 'not-allowed';
-    }
-    
-    const aiPanel = document.querySelectorAll('.game-panel-container')[1];
-    if (aiPanel) {
-        aiPanel.setAttribute('data-locked', 'true');
-    }
-}
-
-// Unlock AI game (enable controls)
-function unlockAIGame() {
-    const aiStartBtn = document.getElementById('start-ai');
-    const aiResetBtn = document.getElementById('reset-ai');
-    
-    if (aiStartBtn) {
-        aiStartBtn.disabled = false;
-        aiStartBtn.style.opacity = '1';
-        aiStartBtn.style.cursor = 'pointer';
-    }
-    
-    if (aiResetBtn) {
-        aiResetBtn.disabled = false;
-        aiResetBtn.style.opacity = '1';
-        aiResetBtn.style.cursor = 'pointer';
-    }
-    
-    const aiPanel = document.querySelectorAll('.game-panel-container')[1];
-    if (aiPanel) {
-        aiPanel.setAttribute('data-locked', 'false');
-    }
-    
-    // Update status to show AI is ready
-    updateAIStatus("Ready - Start AI training");
-}
-
-// Check if AI game is locked
-function isAIGameLocked() {
-    const aiPanel = document.querySelectorAll('.game-panel-container')[1];
-    if (aiPanel) {
-        return aiPanel.getAttribute('data-locked') === 'true';
-    }
-    return true; // Default to locked if panel not found
+    manualGame?.render();
+    aiGame?.render();
 }
 
 // Initialize AI population
@@ -361,6 +344,8 @@ function runAgent(agentIndex) {
     console.log(`Running agent ${agentIndex + 1}/${agents.length} in generation ${generation}`);
     
     // Reset the AI game
+    if (!aiGame) return;
+    
     aiGame.reset();
     
     // Set the AI parameters
@@ -369,28 +354,11 @@ function runAgent(agentIndex) {
     // Set generation info
     aiGame.setGeneration(generation, agentIndex + 1);
     
-    // Start the game
+    // Start the game - the AI game will call nextAgent when finished via event
     aiGame.start();
     
-    // Set up a check interval
-    const checkInterval = setInterval(() => {
-        if (aiGame.gameOver) {
-            clearInterval(checkInterval);
-            
-            // Record fitness
-            agent.fitness = aiGame.calculateFitness();
-            agent.gameData = aiGame.getGameData();
-            agent.dotsEaten = aiGame.totalDots - aiGame.dotsRemaining;
-            agent.score = aiGame.score;
-            
-            console.log(`Agent ${agentIndex + 1} finished with fitness ${agent.fitness}`);
-            
-            // Update UI
-            updateAgentInfo(agent);
-            
-            // Don't automatically proceed - the AI game will call nextAgent when needed
-        }
-    }, 100);
+    // Note: We removed the checkInterval as it's redundant
+    // The AI game should trigger events when completed instead
 }
 
 // Move to the next agent
@@ -409,7 +377,7 @@ function nextAgent() {
     }
 }
 
-// Finish the current generation
+// Finish the current generation and start a new one
 function finishGeneration() {
     console.log(`Generation ${generation} complete.`);
     
@@ -460,7 +428,12 @@ function startNextGeneration() {
     // Update UI
     updateGenerationInfo();
     
-    // Start running agents in the new generation
+    // Make sure the AI game is completely reset
+    if (aiGame) {
+        aiGame.reset();
+    }
+    
+    // Start running the first agent in the new generation
     runAgent(currentAgent);
 }
 
@@ -490,11 +463,27 @@ function stopEvolution() {
     }
 }
 
-// Save generation data to the server for learning curve visualization
+// Save generation data to the server
 function saveGenerationData(generationData) {
-    // Add player information to the data
-    generationData.playerName = playerName;
-    generationData.playerClass = playerClass;
+    // Make sure all required fields are present
+    const dataToSend = {
+        // Ensure these required fields exist to prevent server errors
+        generation: generationData.generation || 1,
+        agent: generationData.agent || { id: 0, parameters: {} },
+        fitness: generationData.fitness || 0,
+        dotsEaten: generationData.dotsEaten || 0,
+        score: generationData.score || 0,
+        
+        // Add player information
+        playerName: playerName || "Player",
+        playerClass: playerClass || "Computer Science",
+        
+        // Add timestamp and algorithm info
+        timestamp: new Date().getTime(),
+        algorithm: 'qlearning'
+    };
+    
+    console.log('Saving generation data:', dataToSend);
     
     // Send to server
     fetch('/save_generation_data', {
@@ -502,9 +491,15 @@ function saveGenerationData(generationData) {
         headers: {
             'Content-Type': 'application/json',
         },
-        body: JSON.stringify(generationData)
+        body: JSON.stringify(dataToSend)
     })
-    .then(response => response.json())
+    .then(response => {
+        if (!response.ok) {
+            console.error('Network response error:', response.statusText);
+            throw new Error('Network response was not ok: ' + response.statusText);
+        }
+        return response.json();
+    })
     .then(data => {
         console.log('Generation data saved successfully:', data);
     })
@@ -526,49 +521,23 @@ function updateAgentStats(stats) {
     updateAgentInfo(agents[currentAgent]);
 }
 
-// Show learning curve visualization
-function showLearningCurve() {
-    // Get the modal element
-    const modal = document.getElementById('learning-curve-modal');
-    const modalContent = document.getElementById('learning-curve-content');
-    
-    if (modal && modalContent) {
-        // Show loading indicator
-        modalContent.innerHTML = '<div class="loading">Loading learning curve...</div>';
-        modal.style.display = 'block';
-        
-        // Fetch learning curve data from server
-        fetch('/get_learning_curve')
-            .then(response => response.json())
-            .then(data => {
-                if (data.status === 'success') {
-                    // Display the chart
-                    modalContent.innerHTML = `<img src="data:image/png;base64,${data.plot}" alt="Learning Curve" style="width:100%;">`;
-                } else {
-                    // Show error message
-                    modalContent.innerHTML = `<div class="error">${data.message}</div>`;
-                }
-            })
-            .catch(error => {
-                console.error('Error fetching learning curve:', error);
-                modalContent.innerHTML = '<div class="error">Failed to load learning curve.</div>';
-            });
-    }
-}
-
 // Evolve the next generation using genetic algorithm
 function evolveNextGeneration() {
     // Sort current agents by fitness
     agents.sort((a, b) => b.fitness - a.fitness);
     
-    // Get the top 40% as elite parents
-    const numElites = Math.max(2, Math.floor(agents.length * 0.2));
+    // Calculate adaptive mutation rate based on diversity
+    const adaptiveMutationRate = calculateAdaptiveMutationRate();
+    console.log(`Using adaptive mutation rate: ${adaptiveMutationRate.toFixed(3)}`);
+    
+    // Get the top percentage as elite parents
+    const numElites = Math.max(2, Math.floor(agents.length * ELITE_PERCENTAGE));
     const elites = agents.slice(0, numElites);
     
     // Create new generation
     const newAgents = [];
     
-    // Keep the best agent (elitism)
+    // Keep the best agent unchanged (elitism)
     newAgents.push({
         id: 0,
         parameters: {...agents[0].parameters},
@@ -578,32 +547,37 @@ function evolveNextGeneration() {
         score: 0
     });
     
-    // Add a slightly mutated version of the best agent
+    // Add several slightly mutated versions of the best agent
+    for (let i = 1; i < 3; i++) {
     newAgents.push({
-        id: 1,
-        parameters: mutateParameters({...agents[0].parameters}, MUTATION_RATE * 1.5),
+            id: i,
+            parameters: mutateParameters({...agents[0].parameters}, adaptiveMutationRate * 0.7),
         fitness: 0,
         gameData: [],
         dotsEaten: 0,
         score: 0
     });
+    }
     
-    // Use tournament selection for the rest
-    for (let i = 2; i < GENERATION_SIZE; i++) {
+    // Use tournament selection for the rest with varying tournament sizes
+    for (let i = 3; i < GENERATION_SIZE; i++) {
+        // Adaptive tournament size - higher for later generations
+        const tournamentSize = Math.min(5, 2 + Math.floor(generation / 10));
+        
         // Select parents using tournament selection
-        const parent1 = tournamentSelect(agents, 3); // Tournament size of 3
-        let parent2 = tournamentSelect(agents, 3);
+        const parent1 = tournamentSelect(agents, tournamentSize);
+        let parent2 = tournamentSelect(agents, tournamentSize);
         
         // Make sure parents are different
         while (parent2 === parent1) {
-            parent2 = tournamentSelect(agents, 3);
+            parent2 = tournamentSelect(agents, tournamentSize);
         }
         
-        // Create child through crossover
-        const childParams = crossover(parent1.parameters, parent2.parameters);
+        // Create child through crossover with adaptive method
+        const childParams = adaptiveCrossover(parent1.parameters, parent2.parameters, parent1.fitness, parent2.fitness);
         
-        // Apply mutation
-        const mutatedParams = mutateParameters(childParams, MUTATION_RATE);
+        // Apply mutation with adaptive rate
+        const mutatedParams = mutateParameters(childParams, adaptiveMutationRate);
         
         // Create child
         const child = {
@@ -618,8 +592,9 @@ function evolveNextGeneration() {
         newAgents.push(child);
     }
     
-    // Add one completely random agent for exploration
-    if (GENERATION_SIZE > 5) {
+    // Add completely random agents for exploration (more in early generations, fewer later)
+    const numRandomAgents = Math.max(1, Math.floor(4 * Math.exp(-generation / 20)));
+    for (let i = 0; i < numRandomAgents; i++) {
         const randomIndex = Math.floor(Math.random() * (GENERATION_SIZE - 3)) + 3;
         newAgents[randomIndex] = {
             id: randomIndex,
@@ -634,16 +609,57 @@ function evolveNextGeneration() {
     // Replace the old generation
     agents = newAgents;
     
-    console.log(`Created generation ${generation} with ${agents.length} agents`);
+    console.log(`Created generation ${generation} with ${agents.length} agents (${numRandomAgents} random)`);
 }
 
-// Tournament selection
+// Calculate adaptive mutation rate based on population diversity
+function calculateAdaptiveMutationRate() {
+    // Sample a parameter to check diversity
+    const paramKeys = Object.keys(agents[0].parameters);
+    const sampleKey = paramKeys[Math.floor(Math.random() * paramKeys.length)];
+    
+    // Calculate mean and variance using reduce
+    const { sum, sumSquared } = agents.reduce((acc, agent) => {
+        const value = agent.parameters[sampleKey];
+        return {
+            sum: acc.sum + value,
+            sumSquared: acc.sumSquared + value * value
+        };
+    }, { sum: 0, sumSquared: 0 });
+    
+    const mean = sum / agents.length;
+    const variance = (sumSquared / agents.length) - (mean * mean);
+    const stdDev = Math.sqrt(Math.max(0, variance));
+    
+    // Calculate normalized diversity (0-1)
+    const range = PARAMETER_RANGE[sampleKey];
+    const rangeSize = range.max - range.min;
+    const diversity = stdDev / (rangeSize * 0.3); // Normalize to 0-1 range approximately
+    
+    // Calculate adaptive mutation rate
+    const baseMutationRate = MUTATION_RATE;
+    const diversityFactor = 1.3 - Math.min(1, diversity);
+    const generationFactor = Math.max(0.7, 1.0 - (generation / 100));
+    let adaptiveMutationRate = baseMutationRate * diversityFactor * generationFactor;
+    
+    // Ensure it stays in reasonable bounds
+    return Math.min(0.5, Math.max(0.1, adaptiveMutationRate));
+}
+
+// Tournament selection - improved with weighted selection probability
 function tournamentSelect(agents, tournamentSize) {
     let best = null;
     
     // Select random agents and find the best
     for (let i = 0; i < tournamentSize; i++) {
-        const randomIndex = Math.floor(Math.random() * agents.length);
+        // Weighted random selection - favor higher-ranked agents
+        let randomIndex;
+        if (Math.random() < 0.7) {  // 70% chance of selecting from top half
+            randomIndex = Math.floor(Math.random() * Math.ceil(agents.length / 2));
+        } else {
+            randomIndex = Math.floor(Math.random() * agents.length);
+        }
+        
         const candidate = agents[randomIndex];
         
         if (best === null || candidate.fitness > best.fitness) {
@@ -654,20 +670,23 @@ function tournamentSelect(agents, tournamentSize) {
     return best;
 }
 
-// Crossover parameters
-function crossover(params1, params2) {
+// Adaptive crossover based on parent fitness
+function adaptiveCrossover(params1, params2, fitness1, fitness2) {
     const childParams = {};
+    
+    // Calculate relative fitness for weighted crossover
+    const totalFitness = fitness1 + fitness2;
+    const weight1 = totalFitness > 0 ? fitness1 / totalFitness : 0.5;
     
     // For each parameter
     for (const key in params1) {
-        // Use different crossover methods
         if (Math.random() < 0.7) {
-            // Standard crossover - take from either parent
-            childParams[key] = Math.random() < 0.5 ? params1[key] : params2[key];
-        } else {
-            // Blend crossover - weighted average of both parents
-            const blendRatio = Math.random();
+            // Weighted blend crossover - favor the better parent
+            const blendRatio = Math.random() * 0.5 + weight1; // Bias toward better parent
             childParams[key] = params1[key] * blendRatio + params2[key] * (1 - blendRatio);
+        } else {
+            // Standard crossover - take from either parent
+            childParams[key] = Math.random() < weight1 ? params1[key] : params2[key];
         }
     }
     
@@ -685,8 +704,17 @@ function mutateParameters(params, mutationRate) {
             const range = PARAMETER_RANGE[key];
             
             // Dynamic mutation amount based on generation progress
-            const dynamicFactor = Math.max(0.1, 1 - (generation / 50)); // Decreases as generations progress
-            const mutationAmount = (range.max - range.min) * 0.25 * dynamicFactor * (Math.random() * 2 - 1);
+            const dynamicFactor = Math.max(0.1, 1 - (generation / 30)); // Decreases faster with generations
+            
+            // Use more targeted mutations - occasionally make bigger changes
+            let mutationAmount;
+            if (Math.random() < 0.2) {
+                // Big mutation (exploration)
+                mutationAmount = (range.max - range.min) * 0.4 * dynamicFactor * (Math.random() * 2 - 1);
+            } else {
+                // Small mutation (exploitation)
+                mutationAmount = (range.max - range.min) * 0.15 * dynamicFactor * (Math.random() * 2 - 1);
+            }
             
             mutatedParams[key] += mutationAmount;
             
@@ -698,32 +726,25 @@ function mutateParameters(params, mutationRate) {
     return mutatedParams;
 }
 
-// Generate completely random parameters
-function generateRandomParameters() {
-    const params = {};
-    
-    for (const key in PARAMETER_RANGE) {
-        const range = PARAMETER_RANGE[key];
-        params[key] = randomInRange(range.min, range.max);
-    }
-    
-    return params;
-}
-
-// Random number in range
+// Random number in range - simplified
 function randomInRange(min, max) {
     return min + Math.random() * (max - min);
 }
 
+// Generate completely random parameters - optimized
+function generateRandomParameters() {
+    const params = {};
+    
+    Object.entries(PARAMETER_RANGE).forEach(([key, range]) => {
+        params[key] = randomInRange(range.min, range.max);
+    });
+    
+    return params;
+}
+
 // Update generation info in UI
 function updateGenerationInfo() {
-    // Update generation display
-    const generationElement = document.getElementById('ai-generation');
-    if (generationElement) {
-        generationElement.textContent = `${generation}`;
-    }
-    
-    // Update agent status
+    // Update generation display and status
     updateAIStatus(`Running Generation ${generation}, Agent ${currentAgent + 1}/${agents.length}`);
 }
 
@@ -787,7 +808,7 @@ function updateGenerationResults() {
 function updateAIStatus(status) {
     console.log(`AI Status update: ${status}`);
     
-    // Only update generation display
+    // Update generation display
     const genElement = document.getElementById('ai-generation');
     if (genElement) {
         genElement.textContent = generation;
@@ -800,21 +821,535 @@ function updateAIStatus(status) {
     }
     
     // Force render AI game to ensure status is reflected
-    if (aiGame) {
-        aiGame.render();
-    }
+    aiGame?.render();
 }
 
-// Export functions for use in HTML
+// Export functions for global access
 window.pacmanAI = {
     startEvolution,
     stopEvolution,
     nextAgent,
-    unlockAIGame
+    finishEpisode,
+    updateAgentStats,
+    finishGeneration,
+    generation   // Make generation accessible globally
 };
 
-// Load this at the end of the script
+// Backward compatibility for existing code
 window.nextAgent = nextAgent;
 window.updateAgentStats = updateAgentStats;
-window.showLearningCurve = showLearningCurve;
-window.unlockAIGame = unlockAIGame;
+window.finishGeneration = finishGeneration;
+window.finishEpisode = finishEpisode;
+
+// Function to start the AI game with Q-learning
+function startAIGame() {
+    console.log("Starting AI game with Q-learning...");
+    
+    // Get player information
+    playerName = localStorage.getItem('pacman_player_name') || "Player";
+    playerClass = localStorage.getItem('pacman_player_class') || "Computer Science";
+    
+    // Initialize or reset Q-learning variables
+    if (!qTable || Object.keys(qTable).length === 0) {
+        console.log("Initializing new Q-learning table");
+        qTable = {};
+        explorationRate = maxExplorationRate;
+        generation = 1;
+        totalEpisodes = 0;
+    }
+    
+    // Make window.generation available globally
+    window.generation = generation;
+    
+    // Make sure we have an AI game instance
+    if (!aiGame) {
+        try {
+            aiGame = new AIGame('ai-game');
+            console.log('AI game initialized successfully');
+        } catch (error) {
+            console.error('Failed to initialize AI game:', error);
+            alert('Failed to start AI game. Please refresh the page and try again.');
+            return;
+        }
+    }
+    
+    // Set up Q-learning parameters for the AI game
+    try {
+        aiGame.setQLearningParameters({
+            qTable,
+            learningRate,
+            discountFactor,
+            explorationRate
+        });
+        
+        // Reset and start the AI game
+        aiGame.reset();
+        aiGame.start();
+        
+        console.log(`Starting Q-learning training with exploration rate ${explorationRate.toFixed(3)}`);
+        
+        // Update UI with proper generation format (X/100)
+        const genCounter = document.getElementById("gen-counter");
+        if (genCounter) {
+            genCounter.textContent = `${generation}/100`;
+        }
+        
+        updateAIStatus(`Generation ${generation} started (Epsilon: ${explorationRate.toFixed(3)})`);
+    } catch (error) {
+        console.error("Error starting AI game:", error);
+        alert("An error occurred while starting the AI game. Please try resetting it.");
+    }
+}
+
+// Handle episode end for Q-learning
+function finishEpisode(reward, dotsEaten, score, isCollision = false) {
+    try {
+        // Save episode data
+        cumulativeReward += reward;
+        totalEpisodes++;
+        
+        // Track data for visualization
+        episodeRewards.push(reward);
+        episodeScores.push(score);
+        episodeQTableSizes.push(Object.keys(qTable).length);
+        episodeExplorationRates.push(explorationRate);
+        
+        // If this is from a ghost collision, increment generation immediately
+        if (isCollision) {
+            generation++;
+            console.log(`Incrementing to generation ${generation} due to ghost collision`);
+        }
+        
+        // Adaptive learning rate and discount factor based on performance
+        updateLearningParameters();
+        
+        // Update generation count every 20 episodes or on collision
+        if (!isCollision && totalEpisodes % 20 === 0) {
+            generation++;
+            console.log(`Starting generation ${generation} with exploration rate ${explorationRate.toFixed(3)}`);
+        }
+        
+        // Update the generation counter in the UI
+        const genCounter = document.getElementById("gen-counter");
+        if (genCounter) {
+            genCounter.textContent = `${generation}/100`;
+        }
+        
+        // Log episode results
+        console.log(`Episode ${totalEpisodes} finished - Reward: ${reward.toFixed(2)}, ` +
+                    `Dots: ${dotsEaten}, Score: ${score}, ` +
+                    `Generation: ${generation}, Exploration rate: ${explorationRate.toFixed(3)}`);
+        
+        // Update UI with episode results
+        updateAIStatus(`Generation ${generation} - Reward: ${reward.toFixed(2)}`);
+        
+        // Check if we've reached the generation limit
+        if (generation > 100) {
+            console.log("Reached maximum generation limit (100). Training complete.");
+            updateAIStatus("Training complete - 100 generations finished");
+            return;
+        }
+        
+        // Make sure window.generation is updated for other functions to use
+        window.generation = generation;
+        
+        // Restart with minimal delay to keep training going
+        if (aiGame) {
+            restartAIGame();
+        }
+    } catch (error) {
+        // Catch any uncaught errors to prevent the game from freezing
+        console.error("Critical error in finishEpisode:", error);
+        
+        // Try to recover by forcing a game restart
+        recoverFromError();
+    }
+}
+
+// Helper function to update learning parameters
+function updateLearningParameters() {
+    // Decrease learning rate as we progress to fine-tune learning
+    if (generation > 20) {
+        learningRate = Math.max(0.01, learningRate * 0.995);
+    }
+    
+    // Increase discount factor as we progress to focus more on long-term rewards
+    if (generation > 10) {
+        discountFactor = Math.min(0.99, discountFactor * 1.001);
+    }
+    
+    // Decay exploration rate - more adaptive based on generation
+    if (generation < 30) {
+        // Higher exploration early on
+        explorationRate = Math.max(0.1, explorationRate * (1 - 0.008));
+    } else if (generation < 70) {
+        // Medium exploration in middle generations
+        explorationRate = Math.max(0.05, explorationRate * (1 - 0.015));
+    } else {
+        // Very low exploration in final generations to exploit knowledge
+        explorationRate = Math.max(minExplorationRate, explorationRate * (1 - 0.025));
+    }
+}
+
+// Helper function to restart AI game
+function restartAIGame() {
+    try {
+        aiGame.reset();
+        
+        // Update Q-learning parameters with current values
+        aiGame.setQLearningParameters({
+            qTable,
+            learningRate,
+            discountFactor,
+            explorationRate
+        });
+        
+        // Start next episode with a small delay to ensure proper reset
+        setTimeout(() => aiGame.start(), 100);
+    } catch (error) {
+        console.error("Error restarting AI game:", error);
+        
+        // Try one more time with a delay
+        setTimeout(() => {
+            try {
+                aiGame.reset();
+                aiGame.start();
+            } catch (finalError) {
+                console.error("Fatal error restarting game:", finalError);
+            }
+        }, 500);
+    }
+}
+
+// Helper function to recover from errors
+function recoverFromError() {
+    try {
+        if (aiGame) {
+            generation = Math.min(100, generation + 1);
+            
+            // Update UI
+            const genCounter = document.getElementById("gen-counter");
+            if (genCounter) {
+                genCounter.textContent = `${generation}/100`;
+            }
+            
+            // Force restart
+            aiGame.reset();
+            aiGame.start();
+        }
+    } catch (recoveryError) {
+        console.error("Failed to recover from error:", recoveryError);
+    }
+}
+
+// Show learning graph modal
+function showLearningGraph() {
+    const modal = document.getElementById('learning-modal');
+    if (!modal) return;
+    
+    // Show loading indicator
+    updateLearningStats();
+    const graphContainer = document.getElementById('learning-graph-container');
+    if (graphContainer) {
+        graphContainer.innerHTML = '<div class="loading-message">Generating plot...</div>';
+    }
+    
+    // Show the modal with a fade-in effect
+    modal.style.display = 'block';
+    setTimeout(() => {
+        modal.style.opacity = '1';
+    }, 10);
+    
+    // Set up event listeners for closing
+    const closeBtn = document.querySelector('.learning-close');
+    if (closeBtn) {
+        closeBtn.onclick = closeLearningModal;
+    }
+    
+    // Set up event listener for refresh button
+    const refreshBtn = document.getElementById('refresh-plot');
+    if (refreshBtn) {
+        refreshBtn.addEventListener('click', generateLearningPlot);
+    }
+    
+    // Close when clicking outside the content
+    window.onclick = function(event) {
+        if (event.target === modal) {
+            closeLearningModal();
+        }
+    };
+    
+    // Close on ESC key
+    document.addEventListener('keydown', function(event) {
+        if (event.key === 'Escape') {
+            closeLearningModal();
+        }
+    });
+    
+    // Generate and display the plot
+    generateLearningPlot();
+}
+
+// Generate the learning plot using server-side matplotlib
+function generateLearningPlot() {
+    // Update all stats first
+    updateLearningStats();
+    
+    // Show loading state
+    const graphContainer = document.getElementById('learning-graph-container');
+    if (graphContainer) {
+        graphContainer.innerHTML = '<div class="loading-message">Generating plot...</div>';
+    }
+    
+    // Add cache-busting parameter to prevent browser caching
+    const cacheBuster = new Date().getTime();
+    
+    // Send data to server to generate the plot
+    fetch('/generate_learning_plot', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0'
+        },
+        body: JSON.stringify({
+            episodes: Array.from({ length: episodeRewards.length }, (_, i) => i + 1),
+            rewards: episodeRewards,
+            states: episodeQTableSizes,
+            _cache: cacheBuster // Add cache buster to the data
+        })
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error('Network response was not ok');
+        }
+        return response.json();
+    })
+    .then(data => {
+        if (data.status === 'success') {
+            // Add cache buster to the image URL to prevent browser caching
+            const imageData = data.plot_data;
+            
+            // Display the plot image
+            displayPlotImage(imageData);
+            
+            // Animate refresh button to show success
+            const refreshBtn = document.getElementById('refresh-plot');
+            if (refreshBtn) {
+                refreshBtn.classList.add('refresh-success');
+                setTimeout(() => {
+                    refreshBtn.classList.remove('refresh-success');
+                }, 1000);
+            }
+        } else {
+            throw new Error(data.message || 'Failed to generate plot');
+        }
+    })
+    .catch(error => {
+        console.error('Error generating plot:', error);
+        if (graphContainer) {
+            graphContainer.innerHTML = `<div class="error-message">Error generating plot: ${error.message}</div>`;
+        }
+    });
+}
+
+// Display the matplotlib-generated plot image
+function displayPlotImage(imageData) {
+    const graphContainer = document.getElementById('learning-graph-container');
+    if (!graphContainer) return;
+    
+    // Clear any existing content
+    graphContainer.innerHTML = '';
+    
+    // Create image element
+    const img = document.createElement('img');
+    img.src = imageData; // Now using the base64 data directly
+    img.alt = 'Q-Learning Progress';
+    img.className = 'learning-plot-image';
+    img.style.width = '100%';
+    img.style.height = '100%';
+    img.style.objectFit = 'contain';
+    
+    // Add to container
+    graphContainer.appendChild(img);
+}
+
+// Close learning modal
+function closeLearningModal() {
+    const modal = document.getElementById('learning-modal');
+    if (!modal) return;
+    
+    // Fade-out effect
+    modal.style.opacity = '0';
+    setTimeout(() => {
+        modal.style.display = 'none';
+        
+        // Clear graph container
+        const graphContainer = document.getElementById('learning-graph-container');
+        if (graphContainer) {
+            graphContainer.innerHTML = '';
+        }
+    }, 300);
+    
+    // Remove event listeners
+    window.onclick = null;
+    document.removeEventListener('keydown', closeLearningModal);
+}
+
+// Update learning stats in the modal
+function updateLearningStats() {
+    // Calculate stats
+    const totalEpisodes = episodeRewards.length;
+    if (totalEpisodes === 0) return;
+    
+    const sum = episodeRewards.reduce((a, b) => a + b, 0);
+    const avgReward = sum / totalEpisodes;
+    const bestReward = Math.max(...episodeRewards);
+    const worstReward = Math.min(...episodeRewards);
+    const latestQTableSize = episodeQTableSizes[episodeQTableSizes.length - 1] || 0;
+    const latestScore = episodeScores[episodeScores.length - 1] || 0;
+    
+    // Calculate improvement over last 5 episodes vs first 5
+    let improvementText = '';
+    if (totalEpisodes >= 10) {
+        const first5Avg = episodeRewards.slice(0, 5).reduce((a, b) => a + b, 0) / 5;
+        const last5Avg = episodeRewards.slice(-5).reduce((a, b) => a + b, 0) / 5;
+        const improvementPercent = ((last5Avg - first5Avg) / Math.abs(first5Avg)) * 100;
+        
+        if (!isNaN(improvementPercent) && isFinite(improvementPercent)) {
+            if (improvementPercent > 0) {
+                improvementText = `<span class="positive">+${improvementPercent.toFixed(1)}%</span>`;
+            } else {
+                improvementText = `<span class="negative">${improvementPercent.toFixed(1)}%</span>`;
+            }
+        }
+    }
+    
+    // Update UI elements
+    document.getElementById('total-episodes').textContent = totalEpisodes;
+    document.getElementById('avg-reward').textContent = avgReward.toFixed(2);
+    document.getElementById('best-reward').textContent = bestReward.toFixed(2);
+    document.getElementById('worst-reward').textContent = worstReward.toFixed(2);
+    
+    if (document.getElementById('last-score')) {
+        document.getElementById('last-score').textContent = latestScore;
+    }
+    
+    if (document.getElementById('current-generation')) {
+        document.getElementById('current-generation').textContent = generation;
+    }
+    
+    if (document.getElementById('q-table-size')) {
+        document.getElementById('q-table-size').textContent = latestQTableSize;
+    }
+    
+    if (document.getElementById('exploration-rate')) {
+        document.getElementById('exploration-rate').textContent = 
+            (explorationRate * 100).toFixed(1) + '%';
+    }
+    
+    if (document.getElementById('learning-improvement') && improvementText) {
+        document.getElementById('learning-improvement').innerHTML = improvementText;
+    }
+    
+    // Update title
+    const titleElement = document.querySelector('.learning-header h2');
+    if (titleElement) {
+        titleElement.textContent = `Q-Learning Progress: ${totalEpisodes} Episodes`;
+    }
+}
+
+// Initialize floating background ghosts
+function initFloatingGhosts() {
+    const ghostTypes = ['ghost-red', 'ghost-pink', 'ghost-blue', 'ghost-orange', 'ghost-vulnerable'];
+    const ghostContainer = document.getElementById('floating-ghosts-container');
+    
+    if (!ghostContainer) return;
+    
+    // Custom animation paths for full-screen movement
+    const animationPaths = [
+        // Path 1 - circle
+        `@keyframes float-ghost-1 {
+            0% { transform: translate(-50px, 50vh) rotate(0deg); }
+            25% { transform: translate(25vw, -30px) rotate(90deg); }
+            50% { transform: translate(calc(100vw + 50px), 50vh) rotate(180deg); }
+            75% { transform: translate(25vw, calc(100vh + 30px)) rotate(270deg); }
+            100% { transform: translate(-50px, 50vh) rotate(360deg); }
+        }`,
+        // Path 2 - diagonal
+        `@keyframes float-ghost-2 {
+            0% { transform: translate(-50px, -50px) rotate(0deg); }
+            50% { transform: translate(calc(100vw + 50px), calc(100vh + 50px)) rotate(180deg); }
+            100% { transform: translate(-50px, -50px) rotate(360deg); }
+        }`,
+        // Path 3 - zig-zag
+        `@keyframes float-ghost-3 {
+            0% { transform: translate(10vw, -50px) rotate(0deg); }
+            20% { transform: translate(30vw, 25vh) rotate(30deg); }
+            40% { transform: translate(60vw, 75vh) rotate(120deg); }
+            60% { transform: translate(20vw, calc(100vh + 50px)) rotate(200deg); }
+            80% { transform: translate(80vw, 50vh) rotate(280deg); }
+            100% { transform: translate(10vw, -50px) rotate(360deg); }
+        }`,
+        // Path 4 - figure 8
+        `@keyframes float-ghost-4 {
+            0% { transform: translate(50vw, -30px) rotate(0deg); }
+            25% { transform: translate(-30px, 40vh) rotate(90deg); }
+            50% { transform: translate(50vw, calc(100vh + 30px)) rotate(180deg); }
+            75% { transform: translate(calc(100vw + 30px), 40vh) rotate(270deg); }
+            100% { transform: translate(50vw, -30px) rotate(360deg); }
+        }`,
+        // Path 5 - wide arc
+        `@keyframes float-ghost-5 {
+            0% { transform: translate(-50px, 10vh) scale(0.8) rotate(0deg); }
+            33% { transform: translate(50vw, -40px) scale(1.1) rotate(120deg); }
+            66% { transform: translate(calc(100vw + 50px), 10vh) scale(0.9) rotate(240deg); }
+            100% { transform: translate(-50px, 10vh) scale(0.8) rotate(360deg); }
+        }`
+    ];
+    
+    // Add custom animations to document
+    let animationStyle = document.createElement('style');
+    animationStyle.textContent = animationPaths.join('\n');
+    document.head.appendChild(animationStyle);
+    
+    // Clear any existing ghosts
+    ghostContainer.innerHTML = '';
+    
+    // Add 12-18 ghosts to the entire screen
+    const ghostCount = Math.floor(Math.random() * 7) + 12;
+    
+    for (let i = 0; i < ghostCount; i++) {
+        const ghost = document.createElement('div');
+        const ghostType = ghostTypes[Math.floor(Math.random() * ghostTypes.length)];
+        
+        ghost.className = `floating-ghost ${ghostType}`;
+        
+        // Randomize initial position across the whole viewport
+        const left = Math.random() * 100 + 'vw';
+        const top = Math.random() * 100 + 'vh';
+        ghost.style.left = left;
+        ghost.style.top = top;
+        
+        // Pick a random animation path
+        const animationIndex = Math.floor(Math.random() * animationPaths.length) + 1;
+        
+        // Randomize animation duration, delay and direction
+        const duration = 25 + Math.random() * 20;
+        const delay = Math.random() * 20;
+        const direction = Math.random() > 0.5 ? 'normal' : 'reverse';
+        ghost.style.animation = `float-ghost-${animationIndex} ${duration}s linear infinite ${direction}`;
+        ghost.style.animationDelay = `-${delay}s`;
+        
+        // Randomize size and opacity
+        const size = 30 + Math.floor(Math.random() * 30);
+        const opacity = 0.2 + Math.random() * 0.3;
+        ghost.style.width = `${size}px`;
+        ghost.style.height = `${size}px`;
+        ghost.style.opacity = opacity;
+        
+        // Add to container
+        ghostContainer.appendChild(ghost);
+    }
+}

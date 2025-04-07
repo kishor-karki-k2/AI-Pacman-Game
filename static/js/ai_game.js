@@ -54,6 +54,19 @@ class AIGame {
             explorationWeight: 2
         };
         
+        // Q-learning parameters
+        this.qTable = {};
+        this.learningRate = 0.1;
+        this.discountFactor = 0.9;
+        this.explorationRate = 0.3;
+        
+        this.lastState = null;
+        this.lastAction = null;
+        this.currentReward = 0;
+        this.episodeReward = 0;
+        this.previousDots = 0;
+        this.previousScore = 0;
+        
         // Initialize game
         this.reset();
         
@@ -79,6 +92,17 @@ class AIGame {
         
         // Start the game loop
         this.animationFrame = requestAnimationFrame(() => this.runGameLoop());
+        
+        this.gameData = [];
+        this.episodeReward = 0;
+        
+        // Reset tracking variables
+        this.previousDots = 0;
+        this.previousScore = 0;
+        
+        // Initialize state
+        this.lastState = null;
+        this.lastAction = null;
     }
     
     // Reset the game
@@ -195,56 +219,23 @@ class AIGame {
     
     // Update game state
     update() {
-        if (this.gameOver) {
-            // Only track the win for regular games
-            return;
+        if (this.paused || this.gameOver) return;
+        
+        // Record data if game is running
+        if (this.pacman) {
+            // Save current state for learning
+            this.recordGameData();
+            
+            // Make AI decision
+            this.makeQLearningDecision();
         }
         
-        // Check win condition
-        if (this.dotsRemaining <= 0) {
-            this.gameWon = true;
-            this.gameOver = true;
-            console.log("All dots eaten - AI wins!");
-            
-            // Calculate fitness for this run
-            const fitness = this.calculateFitness();
-            console.log(`Final fitness for Agent ${this.agentNumber} in Generation ${this.generationCount}: ${fitness}`);
-            
-            // Update stats for this agent
-            if (window.updateAgentStats) {
-                window.updateAgentStats({
-                    generation: this.generationCount,
-                    agent: this.agentNumber,
-                    fitness: fitness,
-                    dotsEaten: this.totalDots - this.dotsRemaining,
-                    score: this.score
-                });
-            }
-            
-            // Trigger next agent automatically after a brief delay
-            setTimeout(() => {
-                if (window.nextAgent) {
-                    window.nextAgent();
-                }
-            }, 3000); // Longer delay to show win screen
-            
-            return;
-        }
-        
-        // Move Pacman
+        // Update game elements
         this.movePacman();
-        
-        // Move ghosts
         this.moveGhosts();
-        
-        // Check for dot collisions
         this.checkDotCollision();
-        
-        // Check for ghost collisions
         this.checkCollisions();
-        
-        // Record data for AI learning
-        this.recordGameData();
+        this.checkWin();
         
         // Handle power mode timing
         if (this.powerMode && !this.powerModeTimer) {
@@ -521,67 +512,119 @@ class AIGame {
         }
     }
     
-    // Check collisions with ghosts
+    // Check collisions between Pacman and ghosts
     checkCollisions() {
-        if (!this.pacman) return;
+        if (this.gameOver) return;
         
-        for (const ghost of this.ghosts) {
-            // Skip ghosts in the house
-            if (ghost.exitingHouse) continue;
+        // For each ghost
+        for (let i = 0; i < this.ghosts.length; i++) {
+            const ghost = this.ghosts[i];
             
-            // Calculate distance between Pacman and ghost
-            const distance = Math.sqrt(
-                Math.pow(this.pacman.x - ghost.x, 2) + 
-                Math.pow(this.pacman.y - ghost.y, 2)
-            );
+            // Skip if ghost is in "eaten" state
+            if (ghost.state === 'eaten') continue;
             
-            // If collision (adjusting for radius)
-            if (distance < this.pacman.radius + CELL_SIZE / 2 - 2) {
-                if (ghost.isVulnerable) {
-                    // REWARD: Player ate a ghost
-                    this.score += 200;
-                    this.ghostsEaten++;
-                    this.updateScore();
-                    
-                    // Reset ghost to the ghost house
-                    ghost.x = GHOST_HOUSE.exitX;
-                    ghost.y = GHOST_HOUSE.exitY;
-                    ghost.exitingHouse = true;
-                    ghost.isVulnerable = false;
-                    
-                    console.log("Ghost eaten! Total eaten: " + this.ghostsEaten);
-                } else {
-                    // PUNISHMENT: Ghost caught Pacman - end this agent's run
-                    this.gameOver = true;
-                    console.log(`PUNISHMENT: Ghost caught Pacman - Generation ${this.generationCount}, Agent ${this.agentNumber} died!`);
-                    
-                    // Display game over message
-                    this.drawGameMessage(`Agent ${this.agentNumber} died!`, "#FF0000");
-                    
-                    // Calculate fitness for this run
-                    const fitness = this.calculateFitness();
-                    console.log(`Final fitness for Agent ${this.agentNumber} in Generation ${this.generationCount}: ${fitness}`);
-                    
-                    // Update stats for this agent
-                    if (window.updateAgentStats) {
-                        window.updateAgentStats({
-                            generation: this.generationCount,
-                            agent: this.agentNumber,
-                            fitness: fitness,
-                            dotsEaten: this.totalDots - this.dotsRemaining,
-                            score: this.score
-                        });
+            // Check for collision between Pacman and this ghost
+            if (this.checkCollision(this.pacman, ghost)) {
+                // If ghost is vulnerable, eat it
+                if (ghost.vulnerable) {
+                    this.eatGhost(ghost);
+                    continue;
+                }
+                
+                // Otherwise, Pacman gets caught
+                console.log("Ghost caught Pacman! Generation ended");
+                
+                // Add negative reward for death
+                this.currentReward -= 50;
+                this.episodeReward -= 50;
+                
+                // Game over
+                this.displayGameOver("New Generation!");
+                this.gameOver = true;
+                
+                // Get data for the episode
+                const dotsEaten = this.totalDots - this.dotsRemaining;
+                
+                // Call finishEpisode directly with error handling, passing isCollision=true
+                try {
+                    if (typeof window.finishEpisode === 'function') {
+                        window.finishEpisode(
+                            this.episodeReward, 
+                            dotsEaten || 0,  // Ensure dotsEaten is not undefined
+                            this.score || 0,  // Ensure score is not undefined
+                            true // Mark as collision to trigger generation increment
+                        );
+                    } else {
+                        console.error("finishEpisode function not found in window object");
+                        // Try to recover by resetting the game
+                        setTimeout(() => this.reset(), 500);
                     }
-                    
-                    // Trigger next agent automatically (but not next generation)
+                } catch (error) {
+                    console.error("Error calling finishEpisode:", error);
+                    // Try to recover by resetting the game
                     setTimeout(() => {
-                        if (window.nextAgent) {
-                            window.nextAgent();
+                        try {
+                            this.reset();
+                            this.start();
+                        } catch (resetError) {
+                            console.error("Failed to recover from error:", resetError);
                         }
                     }, 500);
-                    
-                    return;
                 }
+                
+                return; // Exit after handling collision
+            }
+        }
+    }
+    
+    // Handle completion of level
+    checkWin() {
+        if (this.dotsRemaining === 0 && !this.gameOver) {
+            console.log("All dots eaten! Level completed successfully!");
+            
+            // Display win message
+            this.displayGameOver("Level Complete!");
+            
+            // Add significant positive reward for completing the level
+            this.currentReward += 50;
+            this.episodeReward += 50;
+            
+            // Learn from final state-action before ending
+            if (this.lastState && this.lastAction !== null) {
+                this.learnFromExperience(this.lastState, this.lastAction, this.currentReward);
+            }
+            
+            // Set game over flag
+            this.gameOver = true;
+            
+            // Get level completion data
+            const dotsEaten = this.totalDots || 0;
+            
+            // Call finishEpisode directly with error handling
+            try {
+                if (typeof window.finishEpisode === 'function') {
+                    window.finishEpisode(
+                        this.episodeReward || 0, 
+                        dotsEaten || 0, 
+                        this.score || 0, 
+                        true  // Consider level completion as collision to start new generation
+                    );
+                } else {
+                    console.error("finishEpisode function not found in window object");
+                    // Try to recover by resetting the game
+                    setTimeout(() => this.reset(), 500);
+                }
+            } catch (error) {
+                console.error("Error in finishEpisode during win:", error);
+                // Try to recover by resetting the game
+                setTimeout(() => {
+                    try {
+                        this.reset();
+                        this.start();
+                    } catch (resetError) {
+                        console.error("Failed to recover from error:", resetError);
+                    }
+                }, 500);
             }
         }
     }
@@ -598,55 +641,50 @@ class AIGame {
     recordGameData() {
         if (!this.pacman) return;
         
-        // Calculate movement since last frame
-        let moved = { x: 0, y: 0 };
-        if (this.lastPosition) {
-            moved = {
-                x: this.pacman.x - this.lastPosition.x,
-                y: this.pacman.y - this.lastPosition.y
-            };
-        }
-        
-        // Save current position for next frame
-        this.lastPosition = { x: this.pacman.x, y: this.pacman.y };
-        
-        // Check if a ghost is nearby (within 4 cells)
-        let nearGhost = false;
-        let closestGhostDistance = Infinity;
-        
-        for (const ghost of this.ghosts) {
-            // Skip ghosts in the house
-            if (ghost.exitingHouse) continue;
-            
-            const distance = Math.sqrt(
-                Math.pow(this.pacman.x - ghost.x, 2) + 
-                Math.pow(this.pacman.y - ghost.y, 2)
-            );
-            
-            if (distance < 4 * CELL_SIZE) {
-                nearGhost = true;
-                closestGhostDistance = Math.min(closestGhostDistance, distance);
-            }
-        }
-        
-        // Get current grid position
-        const gridX = Math.floor(this.pacman.x / CELL_SIZE);
-        const gridY = Math.floor((this.pacman.y - Y_OFFSET) / CELL_SIZE);
-        
-        // Record the data for this frame
+        // Add current state to game data
         this.gameData.push({
-            frame: this.gameData.length,
-            position: { x: this.pacman.x, y: this.pacman.y },
-            moved: moved,
-            direction: { ...this.pacman.direction },
+            position: {
+                x: this.pacman.x,
+                y: this.pacman.y
+            },
+            direction: this.pacman.direction,
             dots: this.totalDots - this.dotsRemaining,
-            dotsEaten: this.totalDots - this.dotsRemaining,
             score: this.score,
-            powerMode: this.powerMode,
-            nearGhost: nearGhost,
-            ghostDistance: closestGhostDistance,
-            gridPosition: { x: gridX, y: gridY }
+            time: this.gameTime
         });
+        
+        // Check for new rewards since last frame
+        const dotsEaten = (this.totalDots - this.dotsRemaining) - this.previousDots;
+        const scoreDelta = this.score - this.previousScore;
+        
+        // Calculate immediate reward
+        let reward = 0;
+        
+        // Reward for eating dots (primary goal)
+        if (dotsEaten > 0) {
+            reward += dotsEaten * 1.0;
+        }
+        
+        // Reward for score increase (includes ghost eating, etc.)
+        if (scoreDelta > 0) {
+            reward += scoreDelta * 0.01;
+        }
+        
+        // Small penalty for time passing (encourages efficiency)
+        reward -= 0.01;
+        
+        // Update current reward
+        this.currentReward = reward;
+        this.episodeReward += reward;
+        
+        // Update previous metrics
+        this.previousDots = this.totalDots - this.dotsRemaining;
+        this.previousScore = this.score;
+        
+        // Learn from previous state-action if available
+        if (this.lastState && this.lastAction !== null) {
+            this.learnFromExperience(this.lastState, this.lastAction, reward);
+        }
     }
     
     // Draw message overlay - removed or simplified messages
@@ -1074,7 +1112,8 @@ class AIGame {
     // Initialize Pacman
     initPacman() {
         // Use the centralized Pacman start position from constants.js
-        // Create Pacman object
+        console.log("Initializing AI Pacman at position:", PACMAN_START_POSITION.x, PACMAN_START_POSITION.y);
+        
         this.pacman = {
             x: PACMAN_START_POSITION.x,
             y: PACMAN_START_POSITION.y,
@@ -1083,8 +1122,6 @@ class AIGame {
             direction: {...DIRECTIONS.RIGHT},
             nextDirection: {...DIRECTIONS.RIGHT}
         };
-        
-        console.log("AI Pacman initialized at:", this.pacman.x, this.pacman.y);
     }
     
     // Initialize ghosts
@@ -1139,6 +1176,22 @@ class AIGame {
         // Get available directions from current position
         const availableDirections = this.getAvailableDirections(currentX, currentY);
         
+        // Check if Pacman has been in the same area for too long
+        let isStuck = false;
+        if (this.gameData.length > 60) {
+            // Check the last 60 frames for movement diversity
+            const positions = this.gameData.slice(-60).map(data => 
+                `${Math.floor(data.position.x / CELL_SIZE)},${Math.floor((data.position.y - Y_OFFSET) / CELL_SIZE)}`
+            );
+            const uniquePositions = new Set(positions);
+            
+            // If Pacman has been in very few positions recently, consider it stuck
+            if (uniquePositions.size < 6) {
+                isStuck = true;
+                console.log(`Pacman appears to be stuck in a loop (${uniquePositions.size} cells). Taking randomized action.`);
+            }
+        }
+        
         // If we're near a cell center, consider changing direction
         if (this.isNearCellCenter(this.pacman.x, this.pacman.y) && availableDirections.length > 0) {
             // Filter out the reverse direction (unless it's the only option)
@@ -1153,6 +1206,20 @@ class AIGame {
             // Score each available direction based on AI parameters
             const directionScores = this.scoreDirections(directions, currentX, currentY);
             
+            // Add random noise to break out of loops if we detect we're stuck
+            if (isStuck) {
+                for (const dir in directionScores) {
+                    // Add significant random noise to break pattern
+                    directionScores[dir] += (Math.random() * 50) - 25;
+                    
+                    // If there's a direction we haven't taken recently, strongly favor it
+                    if (this.hasntMovedInDirection(dir)) {
+                        directionScores[dir] += 30; // Strong bias towards unexplored directions
+                        console.log(`Adding bias towards unexplored direction: ${dir}`);
+                    }
+                }
+            }
+            
             // Get the best direction
             let bestDirection = this.getBestDirection(directionScores);
             
@@ -1164,9 +1231,43 @@ class AIGame {
                 Math.abs(this.pacman.y - (currentY * CELL_SIZE + CELL_SIZE / 2 + Y_OFFSET)) < 2) {
                 this.pacman.direction = {...this.pacman.nextDirection};
                 
+                // Record the direction we took for anti-stuck measures
+                this.recordDirectionTaken(bestDirection);
+                
                 // Log the decision
                 console.log("AI decided to move:", bestDirection);
             }
+        }
+    }
+    
+    // Check if we haven't moved in a specific direction recently (to break out of loops)
+    hasntMovedInDirection(direction) {
+        if (!this.recentDirections) {
+            this.recentDirections = [];
+        }
+        
+        // If we have no recent history, consider it a direction we haven't taken
+        if (this.recentDirections.length === 0) {
+            return true;
+        }
+        
+        // Check if this direction appears in recent history
+        return !this.recentDirections.includes(direction);
+    }
+    
+    // Record the direction taken for anti-stuck measures
+    recordDirectionTaken(direction) {
+        // Initialize if needed
+        if (!this.recentDirections) {
+            this.recentDirections = [];
+        }
+        
+        // Add this direction to recent history
+        this.recentDirections.push(direction);
+        
+        // Keep only the last 8 directions
+        if (this.recentDirections.length > 8) {
+            this.recentDirections.shift();
         }
     }
     
@@ -1190,54 +1291,36 @@ class AIGame {
             if (nextY >= 0 && nextY < ROWS && nextX >= 0 && nextX < COLS) {
                 // Check for dots (REWARD: Strongly prioritize eating dots)
                 if (this.maze[nextY][nextX] === 2) {
-                    score += this.aiParameters.dotWeight * 2.5; // Increased weight for dots
+                    score += this.aiParameters.dotWeight * 3.0; // Further increased weight for dots
                 }
                 
                 // Check for power pellets (REWARD: Very high value for power pellets)
                 if (this.maze[nextY][nextX] === 3) {
-                    score += this.aiParameters.powerPelletWeight * 1.5; // Increased weight for power pellets
+                    score += this.aiParameters.powerPelletWeight * 2.0; // Further increased weight for power pellets
                 }
                 
-                // Check for nearby ghosts (PUNISHMENT: Strong avoidance)
-                for (const ghost of this.ghosts) {
-                    // Skip ghosts in the house
-                    if (ghost.exitingHouse) continue;
-                    
-                    // Ghost position in grid
-                    const ghostX = Math.floor(ghost.x / CELL_SIZE);
-                    const ghostY = Math.floor((ghost.y - Y_OFFSET) / CELL_SIZE);
-                    
-                    // Distance to this ghost
-                    const distance = Math.sqrt(
-                        Math.pow(nextX - ghostX, 2) + 
-                        Math.pow(nextY - ghostY, 2)
-                    );
-                    
-                    // Different behavior depending on ghost vulnerability
-                    if (ghost.isVulnerable) {
-                        // Only chase vulnerable ghosts if close enough
-                        if (distance < 5) {
-                            score += this.aiParameters.vulnerableGhostWeight * (6 - distance);
-                        }
-                    } else {
-                        // Avoid ghosts more strongly (exponential avoidance based on closeness)
-                        if (distance < 4) { // Increased detection range
-                            // Exponential penalty that gets much worse as distance decreases
-                            score += this.aiParameters.ghostWeight * Math.pow(4 - distance, 2);
-                        }
-                    }
-                }
+                // Look ahead feature - check for dots and power pellets in nearby cells
+                score = this.addLookAheadScore(nextX, nextY, direction, score);
                 
-                // Add exploration incentive
-                score += this.getExplorationScore(direction, currentX, currentY);
+                // Ghost avoidance with distance consideration
+                score += this.evaluateGhostInteractions(nextX, nextY);
+                
+                // Add exploration incentive with advanced path analysis
+                score += this.getEnhancedExplorationScore(direction, currentX, currentY);
                 
                 // Strongly encourage forward movement when nothing interesting nearby
-                if (score === 0) {
-                    // Add slight incentive to move forward when no better options
+                if (Math.abs(score) < 3) {
+                    // Add more incentive to move forward when no better options
                     const pacmanDir = this.getDirectionName(this.pacman.direction);
                     if (direction === pacmanDir) {
-                        score += 1;
+                        score += 3;  // Higher value to maintain momentum
                     }
+                }
+                
+                // Penalize reversals unless necessary (to prevent oscillation)
+                const reversalDir = this.getDirectionName(this.getReverseDirection(this.pacman.direction));
+                if (direction === reversalDir && directions.length > 1) {
+                    score -= 5;
                 }
             } else {
                 // Invalid direction, give it a very low score
@@ -1250,8 +1333,104 @@ class AIGame {
         return scores;
     }
     
-    // Get exploration score based on available paths
-    getExplorationScore(direction, currentX, currentY) {
+    // Add look-ahead scoring for dots and power pellets
+    addLookAheadScore(startX, startY, initialDirection, score) {
+        // Look ahead up to 3 cells in the current direction
+        const dirVector = DIRECTIONS[initialDirection];
+        let lookAheadX = startX;
+        let lookAheadY = startY;
+        
+        for (let i = 1; i <= 3; i++) {
+            lookAheadX += dirVector.x;
+            lookAheadY += dirVector.y;
+            
+            // Check bounds
+            if (lookAheadY < 0 || lookAheadY >= ROWS || lookAheadX < 0 || lookAheadX >= COLS) {
+                break;
+            }
+            
+            // Check for wall
+            if (this.maze[lookAheadY][lookAheadX] === 1) {
+                break;
+            }
+            
+            // Check for dot with diminishing returns based on distance
+            if (this.maze[lookAheadY][lookAheadX] === 2) {
+                score += (this.aiParameters.dotWeight * (1.0 / i)) * 0.7;
+            }
+            
+            // Check for power pellet with diminishing returns
+            if (this.maze[lookAheadY][lookAheadX] === 3) {
+                score += (this.aiParameters.powerPelletWeight * (1.2 / i)) * 0.8;
+            }
+        }
+        
+        return score;
+    }
+    
+    // Evaluate ghost interactions considering distance, vulnerability, and power mode
+    evaluateGhostInteractions(nextX, nextY) {
+        let score = 0;
+        let nearestGhostDistance = Infinity;
+        let nearestVulnerableGhostDistance = Infinity;
+        
+        for (const ghost of this.ghosts) {
+            // Skip ghosts in the house
+            if (ghost.exitingHouse) continue;
+            
+            // Ghost position in grid
+            const ghostX = Math.floor(ghost.x / CELL_SIZE);
+            const ghostY = Math.floor((ghost.y - Y_OFFSET) / CELL_SIZE);
+            
+            // Distance to this ghost
+            const distance = Math.sqrt(
+                Math.pow(nextX - ghostX, 2) + 
+                Math.pow(nextY - ghostY, 2)
+            );
+            
+            // Track nearest ghost
+            if (distance < nearestGhostDistance && !ghost.isVulnerable) {
+                nearestGhostDistance = distance;
+            }
+            
+            // Track nearest vulnerable ghost
+            if (distance < nearestVulnerableGhostDistance && ghost.isVulnerable) {
+                nearestVulnerableGhostDistance = distance;
+            }
+            
+            // Different behavior depending on ghost vulnerability
+            if (ghost.isVulnerable) {
+                // Chase vulnerable ghosts based on distance
+                if (distance < 6) {
+                    // More reward for closer vulnerable ghosts, but with safety check
+                    score += this.aiParameters.vulnerableGhostWeight * (8 - distance) / Math.max(1, distance);
+                }
+            } else {
+                // Avoid normal ghosts with exponential penalty and larger detection range
+                if (distance < 6) {
+                    // Critical danger zone - immediate danger
+                    if (distance < 2) {
+                        score += this.aiParameters.ghostWeight * 3; // Extreme danger
+                    } else {
+                        // Exponential penalty that gets worse as distance decreases
+                        score += this.aiParameters.ghostWeight * Math.pow(6 - distance, 2.5) / Math.max(1, distance);
+                    }
+                }
+            }
+        }
+        
+        // Bonus for power mode strategy - chase ghosts when powered up
+        if (this.powerMode && nearestVulnerableGhostDistance < Infinity) {
+            // Extra incentive to chase vulnerable ghosts, especially when power time is running out
+            const powerTimeBonus = (this.powerModeTime > 3000) ? 1.5 : 2.5;
+            score += this.aiParameters.vulnerableGhostWeight * powerTimeBonus;
+        }
+        
+        return score;
+    }
+    
+    // Enhanced exploration score based on available paths and dot density
+    getEnhancedExplorationScore(direction, currentX, currentY) {
         const dirVector = DIRECTIONS[direction];
         let score = 0;
         let nextX = currentX + dirVector.x;
@@ -1267,19 +1446,49 @@ class AIGame {
             return 0;
         }
         
-        // Breadth-first search to find the number of cells that can be reached
+        // Check if we've been in this position recently - if so, reduce the score
+        if (this.gameData.length > 30) {
+            const recentPositions = this.gameData.slice(-30).map(data => 
+                `${Math.floor(data.position.x / CELL_SIZE)},${Math.floor((data.position.y - Y_OFFSET) / CELL_SIZE)}`
+            );
+            
+            const nextPosKey = `${nextX},${nextY}`;
+            const visitCount = recentPositions.filter(pos => pos === nextPosKey).length;
+            
+            // Apply a penalty for revisiting the same cells
+            if (visitCount > 3) {
+                score -= visitCount * 2; // Increased penalty for repeatedly visiting the same cell
+            }
+        }
+        
+        // Breadth-first search to find the number of cells and dots that can be reached
         const visited = new Set();
         const queue = [[nextX, nextY, 1]]; // x, y, depth
+        let dotCount = 0;
+        let powerPelletCount = 0;
         
-        while (queue.length > 0 && visited.size < 20) {
+        while (queue.length > 0 && visited.size < 30) { // Expanded search radius
             const [x, y, depth] = queue.shift();
             const key = `${x},${y}`;
             
             if (visited.has(key)) continue;
             visited.add(key);
             
-            // Add to score (farther cells add less to the score)
-            score += 1 / depth;
+            // Check if this cell has a dot or power pellet
+            if (this.maze[y][x] === 2) {
+                dotCount++;
+                // Dots contribute more to score if they're closer
+                score += (this.aiParameters.explorationWeight * 0.5) / depth;
+            }
+            
+            if (this.maze[y][x] === 3) {
+                powerPelletCount++;
+                // Power pellets contribute significantly more
+                score += (this.aiParameters.explorationWeight * 2) / depth;
+            }
+            
+            // Add to exploration score (farther cells add less)
+            score += this.aiParameters.explorationWeight / (depth * 2);
             
             // Check all four directions
             for (const dir of ['UP', 'DOWN', 'LEFT', 'RIGHT']) {
@@ -1303,6 +1512,19 @@ class AIGame {
                 }
             }
         }
+        
+        // Extra bonus for paths with more dots (encouraging efficient dot collection)
+        if (dotCount > 0) {
+            score += dotCount * 0.8; // Increased from 0.5
+        }
+        
+        // Major bonus for directions leading to power pellets
+        if (powerPelletCount > 0) {
+            score += powerPelletCount * 5; // Increased from 3
+        }
+        
+        // Bonus for paths with more open spaces (better maneuverability)
+        score += Math.min(8, visited.size / 4); // Increased from 5
         
         return score;
     }
@@ -1348,41 +1570,109 @@ class AIGame {
     
     // Fitness function for genetic algorithm
     calculateFitness() {
-        // REWARD: Dot eating is the primary reward
+        // REWARD: Dot eating is the primary reward with progressive scaling
         const dotsEaten = this.totalDots - this.dotsRemaining;
         const dotPercentage = dotsEaten / this.totalDots;
         
-        // Basic reward for dots eaten (increased reward to emphasize dot-seeking behavior)
-        const dotReward = Math.pow(dotPercentage * 10, 1.5) * 200;
+        // Check if Pacman is stuck in the same area
+        let movementPenalty = 0;
+        if (this.gameData.length > 30) {
+            // Check the last 30 frames for movement diversity
+            const positions = this.gameData.slice(-30).map(data => `${Math.floor(data.position.x / CELL_SIZE)},${Math.floor((data.position.y - Y_OFFSET) / CELL_SIZE)}`);
+            const uniquePositions = new Set(positions);
+            
+            // If Pacman has been in very few positions recently, apply movement penalty
+            if (uniquePositions.size < 5) {
+                movementPenalty = 500 * (1 - uniquePositions.size / 5);
+                console.log(`Movement penalty: ${movementPenalty.toFixed(1)} - Pacman is stuck in ${uniquePositions.size} cells`);
+            }
+        }
         
-        // REWARD: Power pellets eaten
-        const powerPelletReward = this.powerPelletCount * 100;
+        // Progressive reward for dots eaten - higher rewards as more dots are eaten
+        // This encourages completing the level rather than just eating a few dots
+        let dotReward;
+        if (dotPercentage < 0.2) {
+            // Initial dots are worth less to encourage learning beyond basics
+            dotReward = Math.pow(dotPercentage * 10, 1.3) * 200; // Increased base reward
+        } else if (dotPercentage < 0.5) {
+            // Middle progress is rewarded more to encourage getting halfway
+            dotReward = Math.pow(dotPercentage * 10, 1.5) * 300; // Increased middle reward
+        } else {
+            // Later dots are worth significantly more to encourage completion
+            dotReward = Math.pow(dotPercentage * 10, 1.8) * 500; // Increased late game reward
+        }
         
-        // REWARD: Ghosts eaten
-        const ghostsEatenReward = this.ghostsEaten * 200;
+        // REWARD: Power pellets eaten (strategic resource)
+        const powerPelletReward = this.powerPelletCount * 200; // Increased reward
         
-        // PUNISHMENT: Time penalty to encourage efficiency
-        // But only apply if dots were eaten (to avoid punishing early deaths too harshly)
-        const timeEfficiencyFactor = dotsEaten > 0 ? 
-            Math.min(1.0, dotsEaten / (this.gameData.length * 0.1)) : 0;
+        // REWARD: Ghosts eaten (tactical opportunity)
+        const ghostsEatenReward = this.ghostsEaten * 400; // Increased reward
         
-        // Calculate the final fitness score
-        let fitness = dotReward + powerPelletReward + ghostsEatenReward;
+        // REWARD: Map exploration bonus - reward for visiting different cells
+        const uniquePositionsVisited = new Set(
+            this.gameData.map(data => `${Math.floor(data.position.x / CELL_SIZE)},${Math.floor((data.position.y - Y_OFFSET) / CELL_SIZE)}`)
+        ).size;
+        const explorationBonus = uniquePositionsVisited * 20; // Reward for each unique cell visited
         
-        // Apply time efficiency factor
-        fitness *= (0.7 + 0.3 * timeEfficiencyFactor);
+        // REWARD: Survival time bonus (with diminishing returns)
+        // But only if meaningful progress was made
+        const survivalBonus = dotsEaten > 0 ? 
+            Math.min(800, Math.sqrt(this.gameData.length) * 5) : 0;
+        
+        // Efficiency factor - reward for eating dots quickly
+        // Calculate dots eaten per frame (higher is better)
+        const dotsPerFrame = this.gameData.length > 0 ? 
+            dotsEaten / this.gameData.length * 100 : 0;
+        
+        // Efficiency increases the reward when dots are eaten quickly
+        const efficiencyFactor = Math.max(0.7, Math.min(2.0, 1.0 + (dotsPerFrame * 3)));
+        
+        // Dot collection rate - was the agent progressively collecting dots or got stuck?
+        let dotCollectionEfficiency = 1.0;
+        if (this.gameData.length > 60 && dotsEaten > 0) {
+            // Check dot collection rate in the last third of gameplay vs first third
+            const frameCount = this.gameData.length;
+            const firstThirdDots = this.gameData[Math.floor(frameCount/3)]?.dots || 0;
+            const lastThirdDots = this.gameData[frameCount-1]?.dots || 0;
+            
+            // If dot collection slowed down significantly in the later part of the game, apply penalty
+            if (lastThirdDots - firstThirdDots < 5 && frameCount > 120) {
+                dotCollectionEfficiency = 0.6; // Significant penalty for stagnating progress
+                console.log(`Dot collection efficiency penalty: Pacman stopped collecting dots`);
+            }
+        }
+        
+        // Calculate base fitness
+        let fitness = dotReward + powerPelletReward + ghostsEatenReward + survivalBonus + explorationBonus;
+        
+        // Apply efficiency factors and penalties
+        fitness *= efficiencyFactor * dotCollectionEfficiency;
+        fitness -= movementPenalty;
         
         // PUNISHMENT: Major penalty if no dots were eaten
         if (dotsEaten === 0) {
-            fitness = Math.max(1, fitness / 20); // Increased penalty for not eating dots
+            fitness = Math.max(5, fitness / 50); // Increased penalty for not eating dots
+        }
+        
+        // PUNISHMENT: Penalty for extremely low progress
+        if (dotPercentage < 0.1 && this.gameData.length > 120) {
+            fitness *= 0.5; // Penalize agents that run for a long time with minimal progress
         }
         
         // REWARD: Major bonus for winning (eating all dots)
         if (dotsEaten === this.totalDots) {
-            fitness *= 5; // Increased bonus for winning
+            fitness *= 15; // Increased bonus for winning
         }
         
-        console.log(`Fitness breakdown: Dots=${dotReward.toFixed(1)}, PowerPellets=${powerPelletReward}, GhostsEaten=${ghostsEatenReward}, Efficiency=${timeEfficiencyFactor.toFixed(2)}`);
+        // REWARD: Progress-based bonus to create a smoother learning curve
+        // This helps bridge the gap between no dots and winning
+        if (dotsEaten > 0 && dotsEaten < this.totalDots) {
+            // Bonus scales up more quickly as Pacman eats more dots
+            const progressBonus = Math.pow(dotPercentage, 1.5) * 1500;
+            fitness += progressBonus;
+        }
+        
+        console.log(`Fitness breakdown: Dots=${dotReward.toFixed(1)}, PowerPellets=${powerPelletReward}, GhostsEaten=${ghostsEatenReward}, Exploration=${explorationBonus}, Efficiency=${efficiencyFactor.toFixed(2)}`);
         
         return Math.max(1, fitness);
     }
@@ -1391,6 +1681,252 @@ class AIGame {
     setGameSpeed(speedFactor) {
         this.speedFactor = speedFactor;
         console.log(`AI Game speed set to ${speedFactor}x`);
+    }
+    
+    // Set Q-learning parameters
+    setQLearningParameters(params) {
+        this.qTable = params.qTable;
+        this.learningRate = params.learningRate;
+        this.discountFactor = params.discountFactor;
+        this.explorationRate = params.explorationRate;
+    }
+    
+    // Encode the game state into a string representation
+    getStateRepresentation() {
+        if (!this.pacman) return null;
+        
+        // Get pacman's grid position
+        const pacmanX = Math.floor(this.pacman.x / CELL_SIZE);
+        const pacmanY = Math.floor((this.pacman.y - Y_OFFSET) / CELL_SIZE);
+        
+        // Get pacman's current direction
+        const pacmanDir = this.getDirectionName(this.pacman.direction);
+        
+        // Create a relative ghost position encoding (simpler state space)
+        const ghostPositions = [];
+        for (const ghost of this.ghosts) {
+            if (ghost.exitingHouse) continue; // Skip ghosts in the house
+            
+            const ghostX = Math.floor(ghost.x / CELL_SIZE);
+            const ghostY = Math.floor((ghost.y - Y_OFFSET) / CELL_SIZE);
+            
+            // Calculate ghost quadrant relative to Pacman (NE, NW, SE, SW)
+            // This reduces state space compared to exact positions
+            const quadrantX = ghostX >= pacmanX ? 'E' : 'W';
+            const quadrantY = ghostY >= pacmanY ? 'S' : 'N';
+            
+            // Calculate Manhattan distance
+            const distance = Math.abs(ghostX - pacmanX) + Math.abs(ghostY - pacmanY);
+            
+            // Simplify distance into zones: 'near' (<=3), 'medium' (<=8), 'far' (>8)
+            let distanceZone = 'far';
+            if (distance <= 3) distanceZone = 'near';
+            else if (distance <= 8) distanceZone = 'medium';
+            
+            // Add vulnerability information
+            const vulnerability = ghost.isVulnerable ? 'V' : 'N';
+            
+            ghostPositions.push(`${quadrantY}${quadrantX}-${distanceZone}-${vulnerability}`);
+        }
+        
+        // Check for dots or power pellets in adjacent cells
+        const adjacentCells = {};
+        for (const dir of ['UP', 'DOWN', 'LEFT', 'RIGHT']) {
+            const dirVector = DIRECTIONS[dir];
+            const checkX = pacmanX + dirVector.x;
+            const checkY = pacmanY + dirVector.y;
+            
+            // Skip if out of bounds
+            if (checkY < 0 || checkY >= ROWS || checkX < 0 || checkX >= COLS) {
+                adjacentCells[dir] = 'W'; // Wall
+                continue;
+            }
+            
+            // Check cell content
+            switch (this.maze[checkY][checkX]) {
+                case 0: adjacentCells[dir] = 'E'; break; // Empty
+                case 1: adjacentCells[dir] = 'W'; break; // Wall
+                case 2: adjacentCells[dir] = 'D'; break; // Dot
+                case 3: adjacentCells[dir] = 'P'; break; // Power pellet
+                default: adjacentCells[dir] = 'E'; // Default empty
+            }
+        }
+        
+        // Combine information into a state representation
+        // Format: direction-UP-RIGHT-DOWN-LEFT-ghost1-ghost2...
+        const stateKey = `${pacmanDir}-${adjacentCells.UP}${adjacentCells.RIGHT}${adjacentCells.DOWN}${adjacentCells.LEFT}-${ghostPositions.join('_')}`;
+        
+        return stateKey;
+    }
+    
+    // Select an action using Q-learning (epsilon-greedy policy)
+    selectAction(stateKey) {
+        // Get available directions from current position
+        const pacmanX = Math.floor(this.pacman.x / CELL_SIZE);
+        const pacmanY = Math.floor((this.pacman.y - Y_OFFSET) / CELL_SIZE);
+        const availableDirections = this.getAvailableDirections(pacmanX, pacmanY);
+        
+        // Initialize Q-values for this state if not yet in the table
+        if (!this.qTable[stateKey]) {
+            this.qTable[stateKey] = {};
+            for (const dir of ['UP', 'DOWN', 'LEFT', 'RIGHT']) {
+                this.qTable[stateKey][dir] = 0;
+            }
+        }
+        
+        // Filter to only include valid directions
+        const validDirections = availableDirections.filter(dir => 
+            this.isValidDirection(dir, pacmanX, pacmanY)
+        );
+        
+        // If no valid directions, return null
+        if (validDirections.length === 0) {
+            return null;
+        }
+        
+        // Epsilon-greedy selection
+        if (Math.random() < this.explorationRate) {
+            // Exploration: choose a random valid direction
+            const randomIndex = Math.floor(Math.random() * validDirections.length);
+            return validDirections[randomIndex];
+        } else {
+            // Exploitation: choose best Q-value among valid directions
+            let bestDirection = validDirections[0];
+            let bestQValue = this.qTable[stateKey][bestDirection] || 0;
+            
+            for (const dir of validDirections) {
+                const qValue = this.qTable[stateKey][dir] || 0;
+                if (qValue > bestQValue) {
+                    bestQValue = qValue;
+                    bestDirection = dir;
+                }
+            }
+            
+            return bestDirection;
+        }
+    }
+    
+    // Check if a direction is valid at the current position
+    isValidDirection(direction, x, y) {
+        const dirVector = DIRECTIONS[direction];
+        const nextX = x + dirVector.x;
+        const nextY = y + dirVector.y;
+        
+        // Check if out of bounds
+        if (nextY < 0 || nextY >= ROWS || nextX < 0 || nextX >= COLS) {
+            return false;
+        }
+        
+        // Check if a wall
+        if (this.maze[nextY][nextX] === 1) {
+            return false;
+        }
+        
+        return true;
+    }
+    
+    // Learn from the experience (Q-learning update rule)
+    learnFromExperience(state, action, reward) {
+        // Get current state representation
+        const currentState = this.getStateRepresentation();
+        
+        // If game is over or we couldn't get current state, use terminal update
+        if (this.gameOver || !currentState) {
+            // Terminal state update (no future reward)
+            if (this.qTable[state] && this.qTable[state][action] !== undefined) {
+                const oldQValue = this.qTable[state][action];
+                const newQValue = oldQValue + this.learningRate * (reward - oldQValue);
+                this.qTable[state][action] = newQValue;
+            }
+            return;
+        }
+        
+        // Get max future Q-value from current state
+        let maxFutureQValue = 0;
+        if (this.qTable[currentState]) {
+            maxFutureQValue = Math.max(
+                ...Object.values(this.qTable[currentState])
+            );
+        }
+        
+        // Q-learning update formula: Q(s,a) ← Q(s,a) + α[r + γ·max Q(s',a') - Q(s,a)]
+        if (this.qTable[state] && this.qTable[state][action] !== undefined) {
+            const oldQValue = this.qTable[state][action];
+            const temporalDifference = reward + (this.discountFactor * maxFutureQValue) - oldQValue;
+            const newQValue = oldQValue + (this.learningRate * temporalDifference);
+            this.qTable[state][action] = newQValue;
+        }
+    }
+    
+    // Make a decision using Q-learning
+    makeQLearningDecision() {
+        if (!this.pacman || this.paused || this.gameOver) return;
+        
+        // Only make decisions when near a cell center for grid-based movement
+        if (this.isNearCellCenter(this.pacman.x, this.pacman.y)) {
+            // Get current state
+            const currentState = this.getStateRepresentation();
+            if (!currentState) return;
+            
+            // Select an action using Q-learning
+            const selectedAction = this.selectAction(currentState);
+            if (!selectedAction) return;
+            
+            // Set the next direction for Pacman
+            this.pacman.nextDirection = {...DIRECTIONS[selectedAction]};
+            
+            // If Pacman is at a cell center, change direction immediately
+            const pacmanX = Math.floor(this.pacman.x / CELL_SIZE);
+            const pacmanY = Math.floor((this.pacman.y - Y_OFFSET) / CELL_SIZE);
+            
+            if (Math.abs(this.pacman.x - (pacmanX * CELL_SIZE + CELL_SIZE / 2)) < 2 &&
+                Math.abs(this.pacman.y - (pacmanY * CELL_SIZE + CELL_SIZE / 2 + Y_OFFSET)) < 2) {
+                this.pacman.direction = {...this.pacman.nextDirection};
+                
+                // Save state and action for learning in the next update
+                this.lastState = currentState;
+                this.lastAction = selectedAction;
+                
+                console.log(`Q-learning decided to move ${selectedAction} from state ${currentState.substring(0, 25)}...`);
+            }
+        }
+    }
+
+    // Check collision between two entities (pacman and ghost)
+    checkCollision(entity1, entity2) {
+        // Calculate distance
+        const distance = Math.sqrt(
+            Math.pow(entity1.x - entity2.x, 2) + 
+            Math.pow(entity1.y - entity2.y, 2)
+        );
+        
+        // Collision threshold (sum of radii)
+        const collisionThreshold = entity1.radius + (CELL_SIZE / 2 - 4);
+        
+        // Return true if collision detected
+        return distance < collisionThreshold;
+    }
+
+    // When Pacman eats a ghost
+    eatGhost(ghost) {
+        // Add points
+        this.score += GHOST_POINTS;
+        this.ghostsEaten++;
+        this.updateScore();
+        
+        // Reset ghost to the ghost house
+        ghost.x = GHOST_HOUSE.exitX;
+        ghost.y = GHOST_HOUSE.exitY;
+        ghost.exitingHouse = true;
+        ghost.isVulnerable = false;
+        
+        console.log("Ghost eaten! Total eaten: " + this.ghostsEaten);
+    }
+
+    // Display game over message
+    displayGameOver(message) {
+        this.gameOver = true;
+        this.drawGameMessage(message, "#FF0000");
     }
 }
 

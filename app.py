@@ -306,6 +306,94 @@ def delete_player(player_id):
     else:
         return jsonify({'status': 'error', 'message': 'Player not found'}), 404
 
+@app.route('/generate_learning_plot', methods=['POST'])
+def generate_learning_plot():
+    """Generate and return matplotlib plots for Q-learning data"""
+    # Get data from request
+    data = request.json
+    if not data:
+        return jsonify({'status': 'error', 'message': 'No data provided'})
+    
+    episodes = data.get('episodes', [])
+    rewards = data.get('rewards', [])
+    states = data.get('states', [])
+    
+    if not episodes or not rewards or not states:
+        return jsonify({'status': 'error', 'message': 'Missing required data'})
+    
+    # Ensure all arrays have the same length to avoid dimension mismatch
+    min_length = min(len(episodes), len(rewards), len(states))
+    if min_length == 0:
+        return jsonify({'status': 'error', 'message': 'Empty data arrays'})
+    
+    # Sample data if too many points to reduce memory and CPU usage
+    if min_length > 500:
+        sample_rate = max(1, min_length // 500)
+        episodes = episodes[::sample_rate]
+        rewards = rewards[::sample_rate]
+        states = states[::sample_rate]
+        # Always include the most recent point
+        if episodes[-1] != min_length:
+            episodes.append(min_length)
+            rewards.append(rewards[-1])
+            states.append(states[-1])
+    
+    # Calculate moving average for rewards
+    window_size = 5
+    moving_avg = []
+    for i in range(len(rewards)):
+        start_idx = max(0, i - window_size // 2)
+        end_idx = min(len(rewards), i + window_size // 2 + 1)
+        moving_avg.append(sum(rewards[start_idx:end_idx]) / (end_idx - start_idx))
+    
+    # Create the plot with dark background - with optimized settings
+    plt.figure(figsize=(12, 6), dpi=80)  # Lower DPI to use less memory
+    plt.style.use('dark_background')
+    
+    # Create main plot with rewards
+    ax1 = plt.gca()
+    ax1.plot(episodes, rewards, 'cyan', alpha=0.7, linewidth=1.5, label='Rewards')
+    ax1.plot(episodes, moving_avg, 'magenta', linewidth=2.5, label='5-Episode Moving Average')
+    ax1.set_xlabel('Episode Number', fontsize=12, color='white')
+    ax1.set_ylabel('Reward', fontsize=12, color='cyan')
+    ax1.tick_params(axis='y', labelcolor='cyan')
+    ax1.grid(True, alpha=0.15)
+    
+    # Create second y-axis for states
+    ax2 = ax1.twinx()
+    ax2.plot(episodes, states, 'lime', linewidth=2, label='States Learned')
+    ax2.set_ylabel('States Learned', fontsize=12, color='lime')
+    ax2.tick_params(axis='y', labelcolor='lime')
+    
+    # Add title and legend
+    plt.title('Q-Learning Progress', fontsize=16, color='white')
+    
+    # Add combined legend
+    lines1, labels1 = ax1.get_legend_handles_labels()
+    lines2, labels2 = ax2.get_legend_handles_labels()
+    ax1.legend(lines1 + lines2, labels1 + labels2, loc='upper left', framealpha=0.7)
+    
+    # Add subtle grid
+    ax1.grid(True, linestyle='--', alpha=0.2)
+    
+    # Improve layout
+    plt.tight_layout()
+    
+    # Save the plot to a bytes buffer instead of a file
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png', dpi=80, facecolor='black', pad_inches=0.1)
+    buf.seek(0)
+    plt.close()
+    
+    # Convert the plot to base64 for embedding in HTML
+    img_str = base64.b64encode(buf.getvalue()).decode('utf-8')
+    img_src = f"data:image/png;base64,{img_str}"
+    
+    return jsonify({
+        'status': 'success',
+        'plot_data': img_src
+    })
+
 def run_server(host='127.0.0.1', port=5000, debug=True):
     """Function to run the server with specified parameters"""
     try:
