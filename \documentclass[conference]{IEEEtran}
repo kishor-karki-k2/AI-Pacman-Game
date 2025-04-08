@@ -52,7 +52,7 @@
 
 \begin{document}
 
-\title{Implementation of Reinforcement Learning in a Web-Based PacMan Game Environment}
+\title{Learning by Doing: Teaching a PacMan Agent Through a Web-Based Environment}
 
 \author{\IEEEauthorblockN{Kishor Karki}
 \IEEEauthorblockA{Department of Computer Science\\
@@ -62,115 +62,113 @@ karki\_k65395@utpb.edu}}
 \maketitle 
 
 \begin{abstract}
-In this paper, I describe how I used reinforcement learning in a web-based PacMan game environment. I implemented Q-learning for the popular arcade game, where the agent learns to avoid ghosts, eat dots, navigate a maze, and maximize its score through trial and error. The implementation features a responsive web interface built with Flask, allowing for wider accessibility and data collection. The system includes user authentication, performance tracking, and administrative capabilities for monitoring student engagement. I describe the implementation details, including state representation, action space, reward scheme, learning parameters, and web architecture. The outcomes demonstrate how the agent learns efficient strategies across multiple generations, improving game score, survival time, and dot collection effectiveness. Real-time visualization tools allow observation of the learning process, and the administrative dashboard enables educators to track student participation. Through this study, I demonstrated how reinforcement learning can solve sequential decision-making challenges in game settings while providing an accessible educational platform.
+This paper shows how I built a web-based PacMan game that uses reinforcement learning. I used a method called Q-learning to help the PacMan character learn through trial and error. The system teaches PacMan to avoid ghosts, eat dots, find paths through the maze, and get high scores. I made this as a website using Flask so anyone can use it without installing special software. The system lets users log in, tracks their progress, and has tools for teachers to see how students are doing. In this paper, I explain how I set up the learning system, how the game makes decisions, and how rewards work. The results show that the PacMan agent gets better over time, learning to survive longer and collect more dots in each new generation. Users can watch the learning happen in real-time, and teachers can download reports about student activity. This project shows how computers can learn from experience while also serving as a teaching tool that's easy for students to access and understand.
 \end{abstract}
 
 \begin{IEEEkeywords}
-reinforcement learning, Q-learning, PacMan, game AI, exploration-exploitation, pygame, web application, educational technology, Flask
+game learning, PacMan, Q-learning, web application, educational tool, Flask, JavaScript
 \end{IEEEkeywords}
 
 \section{Introduction}
-Reinforcement learning is a branch of machine learning where an agent learns by interacting with an environment and receiving rewards or penalties \cite{sutton2018reinforcement}. I chose PacMan because its clear rules and objectives make it an excellent platform to experiment with reinforcement learning algorithms \cite{rohlfshagen2011ms}. The game involves navigating a maze, collecting dots, and avoiding ghosts, which touches on important aspects like path planning, risk assessment, and reward optimization.
+Computers can learn by trying things, seeing what works, and getting better over time. This is called reinforcement learning \cite{sutton2018reinforcement}. I picked PacMan for my project because it has clear goals and rules that make it perfect for testing learning methods \cite{rohlfshagen2011ms}. In PacMan, the character moves through a maze, eats dots, and tries to avoid ghosts - all things that need planning and smart choices.
 
-In this paper, I describe my implementation of a Q-learning algorithm for the PacMan environment \cite{gallagher2003learning}, presented as a web-based application accessible through a browser. Q-learning is a model-free, value-based approach that trains an agent to make optimal decisions through repeated interaction with the environment \cite{russell2010artificial}. It encourages the agent to explore different actions and learn which ones lead to better outcomes.
+In this paper, I show how I built a system where a PacMan character learns to play the game on its own using Q-learning \cite{gallagher2003learning}. I made this as a website so people can use it through their web browsers. Q-learning helps the computer try different moves, see which ones work best, and remember good strategies for the future \cite{russell2010artificial}.
 
-My implementation shows how an artificial agent can explore a game environment and develop strategies to maximize its score by learning from many generations of gameplay \cite{mnih2015human}. The main contributions of this project are:
+My project shows how a computer player can explore the PacMan world and figure out how to get high scores by learning from many games \cite{mnih2015human}. The main things I created are:
 \begin{itemize}
-    \item A complete web-based PacMan game environment with adjustable parameters
-    \item Integration of a Q-learning algorithm for automated gameplay
-    \item A reward and punishment system that effectively guides learning to optimal actions
-    \item Visualization tools for monitoring the agent's performance and learning progress
-    \item User authentication and tracking system for educational deployments
-    \item Administrative dashboard for monitoring student engagement and exporting participation data
-    \item Ability for the AI to learn from human gameplay data \cite{baker2019emergent}
+    \item A complete PacMan game that runs in a web browser
+    \item A learning system that helps PacMan play better over time
+    \item A way to reward good moves and punish bad ones
+    \item Tools that show how the learning is progressing
+    \item A login system that keeps track of who is using the game
+    \item A dashboard for teachers to see how students are using the system
+    \item A feature where the computer can learn from watching how humans play \cite{baker2019emergent}
 \end{itemize}
 
-The web-based implementation enhances accessibility, making it easier for students and researchers to interact with reinforcement learning concepts without specialized software installation \cite{flask2010}. It also enables data collection across multiple users, providing insights into how different play styles can influence AI learning.
+By making this as a website, anyone with internet access can try it without installing anything special \cite{flask2010}. It also lets me collect data from different users to see how various playing styles might help the computer learn better.
 
 \section{Related Work}
-Reinforcement learning has a long history in game environments, starting with TD-Gammon's use of temporal difference learning for backgammon \cite{tesauro1995temporal}. More recently, it has been shown that RL can achieve human-level performance in complex environments such as Atari games \cite{mnih2015human} and Go \cite{van2016deep}.
+People have been teaching computers to play games for a long time. One early success was TD-Gammon, which learned to play backgammon really well \cite{tesauro1995temporal}. More recently, researchers taught computers to play Atari games \cite{mnih2015human} and even the complex game of Go \cite{van2016deep} at human-level or better.
 
-For PacMan specifically, earlier work has explored a range of RL approaches. For example, Rohlfshagen and Lucas \cite{rohlfshagen2011ms} investigated evolutionary algorithms for PacMan controller evolution, and Gallagher and Ryan \cite{gallagher2003learning} compared several RL methods in the PacMan domain, highlighting challenges such as partial observability and high-dimensional state spaces.
+For PacMan specifically, other researchers have tried different approaches. Rohlfshagen and Lucas \cite{rohlfshagen2011ms} worked on evolving PacMan controllers that get better over time, like natural selection. Gallagher and Ryan \cite{gallagher2003learning} compared several learning methods for PacMan and found challenges like the large number of possible game states and limited information available to the player.
 
-More recent work by Schrum et al. \cite{schrum2020pac} has explored neural-symbolic policy hierarchies for Ms. Pac-Man, demonstrating the potential for combining neural networks with symbolic representations to create effective game-playing agents. Meanwhile, Torrado et al. \cite{torrado2018deep} have extended reinforcement learning approaches to general video game AI, developing frameworks that can learn to play multiple games.
+More recent studies by Schrum and colleagues \cite{schrum2020pac} used a mix of neural networks and rule-based systems to solve Ms. Pac-Man games. Meanwhile, Torrado's team \cite{torrado2018deep} developed learning systems that can handle many different video games, not just PacMan.
 
-My work builds on these foundations while prioritizing web accessibility and educational value. Unlike most previous implementations that require specialized software, my web-based approach makes reinforcement learning concepts more accessible to students and educators, allowing for broader engagement with AI concepts in educational settings.
+My work builds on these ideas but focuses on making the technology easier to access through web browsers. Unlike most previous PacMan learning systems that need special software installed, mine works on any device with a web browser. This makes it especially useful for students and teachers who want to learn about how computers can learn from experience.
 
 \section{Game Environment}
-\subsection{Environment Architecture}
-I built the PacMan game world environment using
-Pygame Library \cite{pygame2000}, which created a maze-based world environment where the agent can move in different directions, collect rewards, and interact with enemies. The environment has a number of most important elements:
+\subsection{How the Game Works}
+I built the PacMan game using the Pygame library \cite{pygame2000}. The game creates a world where PacMan can move around, collect items, and interact with the ghost enemies. The main parts of the game are:
 \begin{itemize}
-    \item \textbf{Maze}: Maze structure that identifies walls, corridors, and item
-    locations
-    \item \textbf{PacMan}: The player character controlled by the reinforcement learning agent
-    \item \textbf{Ghosts}: Enemy characters moving through pathfinding algorithms
-    \item \textbf{Dots}: Reward objects of small size dispersed within the maze
-    \item \textbf{Power Pellets}: Special items that offer larger rewards 
+    \item \textbf{Maze}: The walls and paths that make up the game board
+    \item \textbf{PacMan}: The yellow character controlled by the learning system
+    \item \textbf{Ghosts}: Enemy characters that chase PacMan
+    \item \textbf{Dots}: Small white dots that PacMan collects for points
+    \item \textbf{Power Pellets}: Larger dots that let PacMan eat the ghosts for a short time
 \end{itemize}
 
-The game works in a loop where the agent takes an action, receives feedback in terms of rewards, and observes a new state, which is usual in reinforcement learning worlds \cite{sutton2018reinforcement}.
+The game repeats a simple cycle: PacMan makes a move, gets feedback (like points or losing a life), and then sees the new game state. This cycle matches how reinforcement learning works \cite{sutton2018reinforcement}.
 
-\subsection{Game Layout}
+\subsection{Game Board Design}
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=8cm]{game frame.jpg}
-\caption{Layout of the PacMan game environment showing the maze structure, PacMan agent, ghosts, regular dots, and power pellets.}
+\caption{A screenshot of the PacMan game showing the maze, PacMan, ghosts, dots, and power pellets.}
 \label{fig:game_layout}
 \end{figure}
 
-The maze layout is defined in a configuration file, which allows for easy modifications and experiments with different levels of complexity. In this file, numerical values represent various elements:
+I created the maze layout using a simple number system in a configuration file. This makes it easy to change the maze design or create new levels. The numbers represent:
 \begin{itemize}
-    \item 0: Empty space
-    \item 1: Wall
-    \item 2: Regular dot
-    \item 3: Power pellet
-    \item 4: PacMan starting position
+    \item 0: Empty space where PacMan can move
+    \item 1: Wall that blocks movement
+    \item 2: Regular dot that gives points
+    \item 3: Power pellet that lets PacMan eat ghosts
+    \item 4: PacMan's starting position
     \item 5: Ghost starting position
 \end{itemize}
 
-\section{Web-Based Implementation}
-\subsection{System Architecture}
-The system is implemented as a web application using the Flask framework \cite{flask2010}. This architecture provides several advantages over a traditional desktop application:
+\section{Website Design}
+\subsection{How the Website Works}
+I built the game as a website using a tool called Flask \cite{flask2010}. Making it a website has several advantages:
 
 \begin{itemize}
-    \item \textbf{Cross-platform accessibility}: Users can access the game from any device with a modern web browser
-    \item \textbf{Centralized data collection}: Game play and learning data can be collected and analyzed from multiple users
-    \item \textbf{Ease of deployment}: No installation required for end users
-    \item \textbf{Simplified updates}: Changes can be pushed to all users simultaneously
+    \item \textbf{Works everywhere}: People can play on computers, tablets, or phones
+    \item \textbf{Easy data collection}: I can gather information about how people play and how the AI learns
+    \item \textbf{No installation needed}: Users don't have to download or install anything
+    \item \textbf{Easy updates}: When I improve the game, everyone gets the new version automatically
 \end{itemize}
 
-The web application follows a client-server architecture:
+The website has two main parts:
 \begin{itemize}
-    \item \textbf{Backend}: Flask server handles user authentication, data storage, and serves the application
-    \item \textbf{Frontend}: JavaScript-based game implementation runs in the browser using HTML5 Canvas \cite{html5canvas2011}
-    \item \textbf{Communication}: API endpoints facilitate data exchange between frontend and backend
+    \item \textbf{Server side}: A Flask program that handles user logins, saves data, and sends the game to users
+    \item \textbf{Browser side}: JavaScript code that runs the game in the player's web browser using HTML5 Canvas \cite{html5canvas2011}
+    \item \textbf{Communication}: The browser and server send messages back and forth to share information
 \end{itemize}
 
-\subsection{User Interface}
-The user interface consists of several key components:
-
-\begin{itemize}
-    \item \textbf{Login Page}: Collects user information for tracking purposes
-    \item \textbf{Game Interface}: Canvas-based rendering of the PacMan game
-    \item \textbf{Controls}: Options to switch between manual play and AI modes
-    \item \textbf{Learning Visualization}: Real-time graphs showing AI performance metrics
-    \item \textbf{Administrative Dashboard}: For instructors to monitor student engagement
-\end{itemize}
-
-\subsection{User Authentication and Tracking}
-The system includes basic authentication to identify users without requiring complex password management:
+\subsection{What Users See}
+The website has several screens:
 
 \begin{itemize}
-    \item Users enter their name and class/group identifier
-    \item The system logs registration time and subsequent login times
-    \item Each user's game performance and AI training contributions are tracked
-    \item Instructors can export user participation data as Excel spreadsheets
+    \item \textbf{Login Page}: Where users enter their name and class
+    \item \textbf{Game Screen}: Shows the PacMan game with score and controls
+    \item \textbf{Control Panel}: Buttons to switch between playing yourself or watching the AI
+    \item \textbf{Learning Charts}: Graphs showing how the AI is improving
+    \item \textbf{Teacher Dashboard}: Special page for teachers to see student activity
 \end{itemize}
 
-This tracking functionality is particularly valuable in educational settings where instructors want to monitor student engagement with the reinforcement learning concepts.
+\subsection{User Tracking}
+The website keeps track of who uses it:
 
-\subsection{Working Architecture}
+\begin{itemize}
+    \item Users type their name and class when they log in
+    \item The system records when they first visit and when they return
+    \item It saves information about their gameplay and AI learning progress
+    \item Teachers can download Excel files with information about student activity
+\end{itemize}
+
+This tracking is especially helpful in classrooms where teachers want to see which students are using the system and how they're doing.
+
+\subsection{How the Pieces Work Together}
 \begin{figure}[htbp]
 \centering
 \begin{tikzpicture}[scale=0.8, transform shape,
@@ -179,268 +177,333 @@ This tracking functionality is particularly valuable in educational settings whe
     arrow/.style={->, >=stealth, thick}
 ]
     % Define nodes with better spacing
-    \node[box] (agent) {RL Agent};
-    \node[box, right=3.5cm of agent] (environment) {Game Env.};
-    \node[box, below=2cm of agent] (qtable) {Q-Table};
+    \node[box] (agent) {PacMan AI};
+    \node[box, right=3.5cm of agent] (environment) {Game World};
+    \node[box, below=2cm of agent] (qtable) {Memory};
     \node[box, above=2cm of environment] (browser) {Web Browser};
-    \node[box, below=2cm of environment] (server) {Flask Server};
+    \node[box, below=2cm of environment] (server) {Web Server};
     
     % Policy and state
-    \node[left=0.6cm of agent, font=\small] (state) {State $s$};
-    \node[above=0.8cm of agent, font=\small] (policy) {Policy $\pi$};
+    \node[left=0.6cm of agent, font=\small] (state) {What it sees};
+    \node[above=0.8cm of agent, font=\small] (policy) {Decision rules};
     
     % Connect the nodes with arrows
-    \draw[arrow] (agent) -- node[above, midway, font=\small] {Action $a$} (environment);
-    \draw[arrow] (environment) to[bend right=25] node[below, midway, font=\small] {Reward $r$, State $s'$} (agent);
+    \draw[arrow] (agent) -- node[above, midway, font=\small] {Move} (environment);
+    \draw[arrow] (environment) to[bend right=25] node[below, midway, font=\small] {Points, New view} (agent);
     
     % Two-way arrow between agent and Q-table
-    \draw[arrow] (agent) -- node[left, near start, font=\small] {Update} (qtable);
-    \draw[arrow] (qtable) -- node[right, near start, font=\small] {Query} (agent);
+    \draw[arrow] (agent) -- node[left, near start, font=\small] {Remember} (qtable);
+    \draw[arrow] (qtable) -- node[right, near start, font=\small] {Recall} (agent);
     
     % Connect browser, environment and server
     \draw[arrow] (browser) -- (environment);
     \draw[arrow] (environment) -- (browser);
     \draw[arrow] (browser) to[bend left=15] node[right, midway, font=\small] {Game Data} (server);
-    \draw[arrow] (server) to[bend left=15] node[left, midway, font=\small] {User Data} (browser);
+    \draw[arrow] (server) to[bend left=15] node[left, midway, font=\small] {User Info} (browser);
     
     % Connect state and policy
     \draw[arrow] (state) -- (agent);
     \draw[arrow] (agent) -- (policy);
 \end{tikzpicture}
 
-\caption{Architecture diagram showing the interaction between the client-side agent, environment, Q-learning components, and server-side data management.}
+\caption{Diagram showing how all parts of the system work together: the AI, game, web browser, and server.}
 \label{fig:architecture}
 \end{figure}
 
-The system works as follows:
+Here's how the entire system works:
 \begin{enumerate}
-    \item Users authenticate through the web interface, with data stored on the Flask server
-    \item The game environment initializes in the browser using JavaScript
-    \item For AI mode:
+    \item Users log in with their name and class
+    \item The game starts in their web browser using JavaScript
+    \item When the AI plays:
     \begin{itemize}
-        \item The agent observes the current state of the environment
-        \item Based on this state and the Q-table, the agent selects an action using the epsilon-greedy policy
-        \item The environment processes the action, updates PacMan's position, and checks for dot collection and ghost collisions
-        \item The environment returns a reward and the new state
-        \item The Q-table is updated using the Q-learning update rule
+        \item The AI looks at the current game state (where PacMan is, where ghosts are, etc.)
+        \item It uses its "memory" (the Q-table) to decide which direction to move
+        \item The game updates PacMan's position and checks if it ate dots or hit ghosts
+        \item The game gives rewards or penalties to the AI
+        \item The AI updates its memory based on what happened
     \end{itemize}
-    \item For manual mode:
+    \item When a person plays:
     \begin{itemize}
-        \item The user controls PacMan using keyboard inputs
-        \item The system records state transitions, actions, and rewards
-        \item This data can be used to train the AI
+        \item The player controls PacMan using arrow keys
+        \item The system records what the player did
+        \item These recordings can teach the AI good strategies
     \end{itemize}
-    \item Learning data (scores, dots eaten, fitness values) is periodically sent to the server
-    \item The server generates learning curves and stores player participation data
-    \item Administrators can access dashboards to view and export user engagement metrics
+    \item The browser sends learning data (scores, dots eaten, etc.) to the server
+    \item The server creates charts showing how the AI is improving
+    \item Teachers can view reports about student activity
 \end{enumerate}
 
-\section{Implementation Details}
-\subsection{Game Components}
-The project is structured into several modules:
+\section{How I Built It}
+\subsection{Main Program Parts}
+I organized the project into different files:
 
 \begin{itemize}
-    \item \textbf{Backend (Python/Flask):}
+    \item \textbf{Server-side code (Python):}
     \begin{itemize}
-        \item \textbf{app.py}: The main Flask application, handling routes, user tracking, and data visualization
-        \item \textbf{\_\_init\_\_.py}: Application initialization
+        \item \textbf{app.py}: The main server program that handles web requests, user tracking, and making charts
+        \item \textbf{\_\_init\_\_.py}: Sets up the server when it starts
     \end{itemize}
     
-    \item \textbf{Frontend (JavaScript):}
+    \item \textbf{Browser-side code (JavaScript):}
     \begin{itemize}
-        \item \textbf{main.js}: Handles application initialization and UI interactions
-        \item \textbf{constants.js}: Game constants and configuration parameters
-        \item \textbf{manual\_game.js}: Implementation of the manual gameplay mode
-        \item \textbf{ai\_game.js}: Implementation of the AI gameplay mode
-        \item \textbf{ai.js}: Q-learning algorithm implementation
+        \item \textbf{main.js}: Controls the overall program and user interface
+        \item \textbf{constants.js}: Game settings like speed, size, and colors
+        \item \textbf{manual\_game.js}: Code for when people play the game themselves
+        \item \textbf{ai\_game.js}: Code for when the AI plays the game
+        \item \textbf{ai.js}: The learning algorithm that helps PacMan get smarter
     \end{itemize}
     
-    \item \textbf{Templates and Static Files:}
+    \item \textbf{Web pages and graphics:}
     \begin{itemize}
-        \item \textbf{index.html}: Main game interface
-        \item \textbf{loginpage.html}: User authentication interface
-        \item \textbf{admin.html}: Administrative dashboard
-        \item CSS and image assets
+        \item \textbf{index.html}: The main game page
+        \item \textbf{loginpage.html}: The page where users enter their information
+        \item \textbf{admin.html}: The page for teachers
+        \item Image files and style sheets
     \end{itemize}
 \end{itemize}
 
-These modules work together to create a complete game environment that serves as both an interactive game and a reinforcement learning testbed.
+All of these parts work together to create both a fun game and a learning platform.
 
-\subsection{Data Collection and Storage}
-The system collects several types of data:
+\subsection{Information Collection}
+The system collects several types of information:
 
 \begin{itemize}
-    \item \textbf{User information}: Name, class, registration time, last login
-    \item \textbf{Learning metrics}: Generation number, fitness scores, dots eaten, game scores
-    \item \textbf{Game state transitions}: For training the AI from human gameplay
+    \item \textbf{User details}: Names, classes, when they logged in
+    \item \textbf{Learning data}: How many games the AI has played, scores, dots eaten
+    \item \textbf{Gameplay recordings}: How human players move and make decisions
 \end{itemize}
 
-Data is temporarily stored in server memory during a session and can be exported to Excel format for further analysis.
+This information is stored temporarily on the server and can be downloaded as Excel files for further study.
 
-\subsection{Visualization}
-I included visualization components to monitor the gameplay and learning progress:
+\subsection{Visual Displays}
+I created several ways to see what's happening:
 \begin{itemize}
-    \item Real-time game rendering using HTML5 Canvas
-    \item Display of the current score, generation number, and dots eaten
-    \item Interactive learning curves showing fitness scores, dots eaten, and game scores over generations
-    \item Administrative dashboard with user participation statistics
+    \item The game itself, drawn using HTML5 Canvas
+    \item Score counters, generation numbers, and dots eaten
+    \item Charts showing how the AI improves over time
+    \item A dashboard showing which students have used the system
 \end{itemize}
-These visualizations help users gain insights into the agent's behavior and allow instructors to track student engagement.
+These visuals help people understand how the learning works and let teachers track student activity.
 
-\subsection{Learning Curve}
+\subsection{Learning Charts}
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=8cm]{learning_curve.png}
-\caption{Sample learning curve showing average score, dots eaten, and fitness score over training generations.}
+\caption{A chart showing how the AI improves over time, tracking scores, dots eaten, and overall performance.}
 \label{fig:learning_curve}
 \end{figure}
 
-The system generates learning curves that visualize three key metrics:
+The system creates charts that show three important measurements:
 \begin{itemize}
-    \item \textbf{Fitness scores}: A combined measure of performance
-    \item \textbf{Dots eaten}: How effectively the agent collects rewards
-    \item \textbf{Game scores}: The total points accumulated per episode
+    \item \textbf{Fitness score}: An overall rating of how well the AI is doing
+    \item \textbf{Dots eaten}: How many dots PacMan collects per game
+    \item \textbf{Game score}: The points earned in each game
 \end{itemize}
 
-These curves help users understand how the agent's performance improves over successive generations.
+These charts help users see how the AI gets better with each generation of learning.
 
-\section{Reinforcement Learning Implementation}
-\subsection{Q-Learning Algorithm}
-I have used Q-learning, a value-based reinforcement learning algorithm that estimates the value of state-action pairs \cite{sutton2018reinforcement}. The algorithm is defined by the equation below:
+\section{How PacMan Learns}
+\subsection{Q-Learning}
+I used a learning method called Q-learning, which helps PacMan figure out which moves are best in different situations \cite{sutton2018reinforcement}. Here's the main formula that makes it work:
 \begin{equation}
 Q(s,a) \leftarrow Q(s,a) + \alpha [r + \gamma \max_{a'} Q(s',a') - Q(s,a)]
 \end{equation}
-where:
+This might look complicated, but it means:
 \begin{itemize}
-    \item $Q(s,a)$ is the value of taking action $a$ in state $s$
-    \item $\alpha$ is the learning rate
-    \item $r$ is the reward received
-    \item $\gamma$ is the discount factor
-    \item $s'$ is the new state
-    \item $\max_{a'} Q(s',a')$ is the maximum value achievable from the new state
+    \item $Q(s,a)$ is how good PacMan thinks it is to make move $a$ in situation $s$
+    \item $\alpha$ is how quickly PacMan learns from new experiences
+    \item $r$ is the reward PacMan gets (like points for eating dots)
+    \item $\gamma$ is how much PacMan cares about future rewards vs. immediate ones
+    \item $s'$ is the new situation after making the move
+    \item $\max_{a'} Q(s',a')$ is the value of the best possible move in the new situation
 \end{itemize}
 
-I store the Q-values in a JavaScript object that maps state-action pairs to expected rewards and update this table when the agent interacts with the environment. This implementation allows the Q-learning to run directly in the browser, making the reinforcement learning process more accessible to users without requiring server-side computation.
+The game stores these values in a "memory table" (Q-table) in JavaScript that helps PacMan remember which moves worked well in the past. By running in the browser, users can see the learning happen without needing special software.
 
-\subsection{State Representation}
-The representation of the state is a crucial component of reinforcement learning \cite{russell2010artificial}. I created the state as an object which consists of:
+\subsection{What PacMan Sees}
+PacMan needs to understand its surroundings to make good decisions \cite{russell2010artificial}. The program creates a simple view of the game that includes:
 \begin{itemize}
-    \item PacMan's current grid position in terms of (gridX, gridY)
-    \item PacMan's current direction
-    \item Detection of walls in four directions (up, right, down, left)
-    \item Distance to the nearest ghost
-    \item Direction to the nearest ghost
-    \item Current power mode status (whether power pellets are active)
+    \item PacMan's location in the grid (which square it's in)
+    \item Which way PacMan is facing
+    \item Whether there are walls in each direction
+    \item How far away the nearest ghost is
+    \item Which direction the nearest ghost is
+    \item Whether a power pellet is active
 \end{itemize}
 
-This approach provides enough detail for decision-making while keeping the state space manageable by using relative positions and simplified representations.
+This simple view helps PacMan learn more quickly because it doesn't have to deal with too much information.
 
-\subsection{Action Space}
-The action space consists of four movements:
+\subsection{Possible Moves}
+PacMan can make four moves:
 \begin{itemize}
-    \item Up
-    \item Down
-    \item Left
-    \item Right
+    \item Go up
+    \item Go down
+    \item Go left
+    \item Go right
 \end{itemize}
-Each action moves PacMan in the corresponding direction. 
+Each move changes PacMan's position if there's no wall in the way.
 
-\subsection{Reward and Punishment Structure}
-I designed the reward and punishment structure to define the agent behaviors that lead to success in the game:
+\subsection{Rewards and Penalties}
+To learn good behavior, PacMan gets rewards for good actions and penalties for bad ones:
 \begin{itemize}
-    \item Small reward for staying alive (0.1 per step)
-    \item Reward for collecting dots (scaled by points earned)
-    \item Large penalty for collisions with ghosts (-100)
-    \item Substantial reward for completing the level (+500)
-\end{itemize}
-
-\subsection{Exploration-Exploitation Strategy}
-The agent uses an epsilon-greedy strategy which balances exploration and exploitation \cite{sutton2018reinforcement}:
-
-\begin{itemize}
-    \item With probability $\epsilon$ (exploration rate), choose a random action
-    \item With probability $1-\epsilon$, choose the action with the highest Q-value
+    \item A small reward for staying alive (0.1 points per step)
+    \item Rewards for eating dots (matching the game points)
+    \item A big penalty for hitting ghosts (-100 points)
+    \item A huge reward for finishing the level (+500 points)
 \end{itemize}
 
-The exploration rate decays over time according to the formula:
+\subsection{Balancing Exploration and Exploitation}
+PacMan needs to balance trying new things (exploration) with using strategies that worked before (exploitation) \cite{sutton2018reinforcement}:
+
+\begin{itemize}
+    \item With a chance of $\epsilon$ (exploration rate), PacMan tries a random move
+    \item The rest of the time, PacMan chooses the move it thinks is best
+\end{itemize}
+
+The exploration rate gets smaller over time using this formula:
 \begin{equation}
 \epsilon_{new} = \max(\epsilon_{min}, \epsilon_{old} \times \epsilon_{decay})
 \end{equation}
 
-This decay encourages the agent to explore extensively in early generations and gradually transition to exploiting its accumulated knowledge in later generations.
+This means PacMan tries lots of random moves when it's new, but gets more strategic as it learns.
 
-\subsection{Learning from Human Play}
-A unique feature of this implementation is the ability for the AI to learn from human gameplay \cite{baker2019emergent}:
-
-\begin{itemize}
-    \item The system records state transitions during human gameplay
-    \item It extracts actions taken by the human player
-    \item It calculates rewards based on the same reward structure
-    \item These experiences are used to update the Q-table
-\end{itemize}
-
-This approach allows the AI to bootstrap its learning from human demonstrations, potentially accelerating the learning process and helping it discover effective strategies more quickly \cite{ammar2014automated}.
-
-\section{Results and Discussion}
-\subsection{Learning Performance}
-The Q-learning agent which I implemented demonstrates that it can learn effective strategies for the PacMan environment \cite{mnih2015human} and my observations include:
-\begin{itemize}
-    \item The agent starts to navigate with greater purpose instead of moving aimlessly
-    \item It learns to prioritize eating dots while keeping a safe distance from ghosts
-    \item Over the course of multiple generations, performance indicators like average score and survival time slowly improve
-    \item The performance eventually stabilizes as the agent converges toward an optimal policy \cite{sutton2018reinforcement}
-    \item Learning from human gameplay data accelerates the learning process compared to starting from scratch \cite{baker2019emergent}
-\end{itemize}
-
-\subsection{Web Application Performance}
-The web-based implementation provides several benefits and challenges:
+\subsection{Learning from Human Players}
+One special feature is that PacMan can learn from watching how people play \cite{baker2019emergent}:
 
 \begin{itemize}
-    \item \textbf{Accessibility}: The system successfully enables access from various devices without installation requirements
-    \item \textbf{Performance}: JavaScript implementation of Q-learning runs efficiently in modern browsers
-    \item \textbf{Data Collection}: The system effectively tracks user participation and learning metrics
-    \item \textbf{User Experience}: Interactive visualizations help users understand the reinforcement learning process
-    \item \textbf{Administrative Tools}: The dashboard provides valuable insights for instructors monitoring student engagement
+    \item The system records what happens when a person plays
+    \item It figures out which moves the person made
+    \item It calculates rewards for those moves
+    \item It updates PacMan's memory based on what worked for the human
 \end{itemize}
 
-\subsection{Challenges and Limitations}
-During the project, I encountered several obstacles:
+This helps PacMan learn good strategies more quickly by copying what humans do well \cite{ammar2014automated}.
+
+\section{What I Found}
+\subsection{Learning Progress}
+The PacMan AI showed clear improvement as it learned \cite{mnih2015human}:
 \begin{itemize}
-    \item \textbf{Large state space:} Numerous positions make it difficult for the agent to generalize across situations \cite{van2016deep}
-    
-    \item \textbf{Delayed rewards:} Long paths to travel to get rewards in some mazes slowed the learning progress \cite{sutton2018reinforcement}
-    
-    \item \textbf{Suboptimal strategies:} The agent might settle for strategies that work well in some areas but are not the best overall \cite{torrado2018deep}
-    
-    \item \textbf{Browser limitations:} JavaScript memory constraints limit the size of the Q-table in complex environments
-    
-    \item \textbf{Network dependency:} The web-based implementation requires stable internet connectivity for data collection
-    
-    \item \textbf{Simplified state representation:} To run efficiently in browsers, the state space had to be simplified compared to what might be possible in a native application \cite{schrum2020pac}
+    \item At first, PacMan moved randomly with no clear goal
+    \item After several games, it started going after dots more purposefully
+    \item It learned to stay away from ghosts most of the time
+    \item Over time, scores, survival time, and dots eaten all went up
+    \item Eventually, performance leveled off as PacMan reached its best strategy \cite{sutton2018reinforcement}
+    \item When PacMan learned from human players, it improved much faster \cite{baker2019emergent}
 \end{itemize}
 
-\section{Conclusion and Future Work}
-In conclusion, I demonstrated a complete implementation of a Q-learning agent for the PacMan game environment in a web-based platform. The outcome shows that Q-learning can effectively teach an agent to navigate and play well within this environment, with perceptible improvements in performance over time \cite{mnih2015human}. This project provides a flexible framework for experimenting with reinforcement learning parameters and approaches while making the technology accessible through web browsers.
+\subsection{Website Performance}
+The web-based approach worked well:
 
-The web-based implementation successfully addresses the accessibility challenges of traditional AI applications, allowing users to engage with reinforcement learning concepts without specialized software installation \cite{flask2010}. The user tracking and administrative features enhance its value as an educational tool, enabling instructors to monitor student engagement and learning progression.
-
-For future work, I plan to explore:
 \begin{itemize}
-    \item More advanced algorithms, such as Deep Q-Networks (DQN), adapted for browser environments \cite{van2016deep}
-    \item Server-side training capabilities for handling more complex state representations
-    \item Persistent data storage using databases instead of in-memory storage
-    \item Multiplayer capabilities where multiple human players can compete with AI agents
-    \item Mobile-optimized interface with touch controls
-    \item Enhanced administrative tools for classroom management
-    \item Integration with learning management systems (LMS) through LTI standards
-    \item Collaborative learning features where students can share and evaluate AI agents \cite{baker2019emergent}
-    \item Data analytics dashboard for deeper insights into learning patterns
+    \item \textbf{Easy access}: Students could use the game on various devices
+    \item \textbf{Good speed}: The JavaScript code ran fast enough for smooth gameplay
+    \item \textbf{Helpful tracking}: The system successfully collected user information
+    \item \textbf{Clear visuals}: The charts helped users understand how learning works
+    \item \textbf{Teacher tools}: The dashboard made it easy to see student participation
 \end{itemize}
 
-This project serves as both a practical demonstration of reinforcement learning principles and a foundation for future research in game AI, reinforcement learning applications, and educational technology.
+\subsection{Challenges}
+I faced several difficulties:
+\begin{itemize}
+    \item \textbf{Too many game states}: The game has so many possible situations that PacMan couldn't learn them all \cite{van2016deep}
+    
+    \item \textbf{Delayed rewards}: Sometimes PacMan had to make several good moves before getting a reward, which made learning harder \cite{sutton2018reinforcement}
+    
+    \item \textbf{Settling for "good enough"}: PacMan sometimes learned strategies that worked okay but weren't the best possible \cite{torrado2018deep}
+    
+    \item \textbf{Browser limitations}: Web browsers can't store as much information as desktop applications
+    
+    \item \textbf{Internet needed}: Users need a connection to use the system and save their data
+    
+    \item \textbf{Simplified view}: To work in browsers, I had to make PacMan's view of the world simpler than ideal \cite{schrum2020pac}
+\end{itemize}
 
-\section*{Acknowledgment}
-I would like to express my gratitude towards the open-source community for developing and maintaining the tools and libraries that made this work possible, particularly Flask, Pygame, NumPy, and the various JavaScript libraries utilized in this project.
+\section{Surveys for Students}
+To see how well this project works as a teaching tool for K-12 students, I created two surveys. These surveys use kid-friendly language to check what students know before using the PacMan game and what they learn from it.
+
+\subsection{Questions Before Playing}
+The first survey asks students about what they already know:
+
+\begin{enumerate}
+    \item \textbf{What You Already Know:}  
+    \begin{itemize}
+        \item Have you ever played Pac-Man before?
+        \item Do you know what artificial intelligence (AI) is?
+        \item Have you ever learned about computers making decisions on their own?
+    \end{itemize}
+    
+    \item \textbf{Your Interest:}
+    \begin{itemize}
+        \item How excited are you to see how computers can learn to play games?
+        \item What's the coolest thing about computers to you?
+        \item What would you like to learn about today?
+    \end{itemize}
+    
+    \item \textbf{What You Expect:}
+    \begin{itemize}
+        \item What do you hope to find out from today's Pac-Man activity?
+        \item Do you think a computer can become better at Pac-Man than you?
+        \item Have you ever created anything with a computer before?
+    \end{itemize}
+\end{enumerate}
+
+\subsection{Questions After Playing}
+The second survey asks students about what they learned:
+
+\begin{enumerate}
+    \item \textbf{What You Learned:}
+    \begin{itemize}
+        \item How much did you learn about how computers can teach themselves?
+        \item Can you explain how the Pac-Man character got better at playing the game?
+        \item What surprised you the most about how the computer learned to play Pac-Man?
+    \end{itemize}
+    
+    \item \textbf{Understanding the Game:}
+    \begin{itemize}
+        \item Which of these helps the computer learn to play better?
+        \item What happens when the computer tries something new instead of what it already knows works well?
+        \item How does the computer figure out which way to move Pac-Man?
+    \end{itemize}
+    
+    \item \textbf{Fun and Ease:}
+    \begin{itemize}
+        \item Was it fun to watch the computer learn to play Pac-Man?
+        \item How easy was it to understand what was happening on the screen?
+        \item Would you show this to your friends or family?
+    \end{itemize}
+    
+    \item \textbf{Making It Better:}
+    \begin{itemize}
+        \item What was your favorite part of the Pac-Man activity?
+        \item What would make the Pac-Man game cooler or easier to understand?
+        \item If you could change one thing about this activity, what would it be?
+    \end{itemize}
+\end{enumerate}
+
+By comparing what students say before and after using the game, I can see how much they learned about AI and computer learning. This helps me find out which parts of the project work well for teaching and which parts need to be made simpler or more interesting for young students.
+
+\section{Conclusion and Future Plans}
+In this project, I created a web-based PacMan game that learns to play better over time. The Q-learning method successfully taught PacMan to navigate mazes, collect dots, and avoid ghosts \cite{mnih2015human}. Making this as a website means anyone with internet access can use it without installing special software.
+
+The system works well as a teaching tool. Students can see how computer learning happens right in their browser, and teachers can track who's using the system and how they're engaging with it \cite{flask2010}. This makes complex ideas about machine learning more approachable for students.
+
+For future improvements, I'm planning to:
+\begin{itemize}
+    \item Add more advanced learning methods that work well in web browsers \cite{van2016deep}
+    \item Create server-side learning for handling more complex game situations
+    \item Add a database to store information permanently
+    \item Create multiplayer options where humans and AI can compete
+    \item Make the controls work better on phones and tablets
+    \item Add more tools for classroom management
+    \item Connect with existing learning management systems used in schools
+    \item Let students share and compare their trained PacMan agents \cite{baker2019emergent}
+    \item Create more detailed analysis of learning patterns
+\end{itemize}
+
+This project shows both how computers can learn through experience and how web technology can make these ideas accessible to students and teachers. I hope it helps more people understand and get excited about computer learning.
+
+\section*{Thank You}
+I want to thank the open-source community for creating the tools that made this project possible, especially Flask, Pygame, NumPy, and the JavaScript libraries I used.
 
 \begin{thebibliography}{00}
 \bibitem{tesauro1995temporal} G. Tesauro, "Temporal difference learning and TD-Gammon," \emph{Communications of the ACM}, vol. 38, no. 3, pp. 58–68, 1995.

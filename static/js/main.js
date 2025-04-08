@@ -13,14 +13,15 @@ let playerClass = null;
 
 // Evolution parameters
 const GENERATION_SIZE = 20;
-const MUTATION_RATE = 0.3;
-const ELITE_PERCENTAGE = 0.3;
+const MUTATION_RATE = 0.4;         // Increased from 0.3 for more exploration
+const ELITE_PERCENTAGE = 0.2;      // Decreased to focus on the very best performers
+const MAX_GENERATIONS = 200;
 const PARAMETER_RANGE = {
-    dotWeight: { min: 8, max: 50 },         // Increased max value for dot-seeking
-    powerPelletWeight: { min: 20, max: 80 }, // Increased values for power pellets
-    ghostWeight: { min: -70, max: -15 },     // Stronger ghost avoidance
-    vulnerableGhostWeight: { min: 10, max: 40 }, // Better vulnerable ghost chasing
-    explorationWeight: { min: 1, max: 10 }    // Increased exploration weight
+    dotWeight: { min: 10, max: 65 },         // Increased to value dots more highly
+    powerPelletWeight: { min: 40, max: 120 }, // Significantly increased power pellet importance
+    ghostWeight: { min: -100, max: -30 },     // Stronger ghost avoidance
+    vulnerableGhostWeight: { min: 30, max: 80 }, // Greater reward for eating vulnerable ghosts
+    explorationWeight: { min: 2, max: 15 }    // Increased exploration to find dots more efficiently
 };
 
 // Evolution state
@@ -182,9 +183,9 @@ function styleGameCanvases() {
         aiCanvas.style.position = 'relative';
         aiCanvas.style.zIndex = '10'; // Ensure it's above ghost elements
     }
-}
-
-// Set up UI controls
+    }
+    
+    // Set up UI controls
 function setupUIControls() {
     // Set cursor style for panel headings
     const gamePanelHeadings = document.querySelectorAll('.game-panel h2');
@@ -232,7 +233,7 @@ function setupUIControls() {
             
             // Update UI with proper generation format
             const genCounter = document.getElementById("gen-counter");
-            if (genCounter) genCounter.textContent = `${generation}/100`;
+            if (genCounter) genCounter.textContent = `${generation}/200`;
             
             updateAIStatus("AI learning reset. Ready to start.");
         });
@@ -614,36 +615,21 @@ function evolveNextGeneration() {
 
 // Calculate adaptive mutation rate based on population diversity
 function calculateAdaptiveMutationRate() {
-    // Sample a parameter to check diversity
-    const paramKeys = Object.keys(agents[0].parameters);
-    const sampleKey = paramKeys[Math.floor(Math.random() * paramKeys.length)];
+    // Calculate diversity factor - how similar are the best agents
+    const diversity = calculatePopulationDiversity();
     
-    // Calculate mean and variance using reduce
-    const { sum, sumSquared } = agents.reduce((acc, agent) => {
-        const value = agent.parameters[sampleKey];
-        return {
-            sum: acc.sum + value,
-            sumSquared: acc.sumSquared + value * value
-        };
-    }, { sum: 0, sumSquared: 0 });
-    
-    const mean = sum / agents.length;
-    const variance = (sumSquared / agents.length) - (mean * mean);
-    const stdDev = Math.sqrt(Math.max(0, variance));
-    
-    // Calculate normalized diversity (0-1)
-    const range = PARAMETER_RANGE[sampleKey];
-    const rangeSize = range.max - range.min;
-    const diversity = stdDev / (rangeSize * 0.3); // Normalize to 0-1 range approximately
-    
-    // Calculate adaptive mutation rate
+    // Base mutation rate adjusted by diversity and generation
     const baseMutationRate = MUTATION_RATE;
     const diversityFactor = 1.3 - Math.min(1, diversity);
-    const generationFactor = Math.max(0.7, 1.0 - (generation / 100));
+    const generationFactor = Math.max(0.7, 1.0 - (generation / MAX_GENERATIONS));
     let adaptiveMutationRate = baseMutationRate * diversityFactor * generationFactor;
     
-    // Ensure it stays in reasonable bounds
-    return Math.min(0.5, Math.max(0.1, adaptiveMutationRate));
+    // Ensure it stays within reasonable bounds
+    adaptiveMutationRate = Math.min(0.8, Math.max(0.05, adaptiveMutationRate));
+    
+    console.log(`Adaptive mutation rate: ${adaptiveMutationRate.toFixed(3)} (diversity: ${diversity.toFixed(2)}, gen factor: ${generationFactor.toFixed(2)})`);
+    
+    return adaptiveMutationRate;
 }
 
 // Tournament selection - improved with weighted selection probability
@@ -808,11 +794,8 @@ function updateGenerationResults() {
 function updateAIStatus(status) {
     console.log(`AI Status update: ${status}`);
     
-    // Update generation display
-    const genElement = document.getElementById('ai-generation');
-    if (genElement) {
-        genElement.textContent = generation;
-    }
+    // Update generation displays
+    updateGenerationDisplay();
     
     // Update score display directly
     const scoreElement = document.getElementById('ai-score');
@@ -888,11 +871,8 @@ function startAIGame() {
         
         console.log(`Starting Q-learning training with exploration rate ${explorationRate.toFixed(3)}`);
         
-        // Update UI with proper generation format (X/100)
-        const genCounter = document.getElementById("gen-counter");
-        if (genCounter) {
-            genCounter.textContent = `${generation}/100`;
-        }
+        // Update UI with proper generation format 
+        updateGenerationDisplay();
         
         updateAIStatus(`Generation ${generation} started (Epsilon: ${explorationRate.toFixed(3)})`);
     } catch (error) {
@@ -918,21 +898,24 @@ function finishEpisode(reward, dotsEaten, score, isCollision = false) {
         if (isCollision) {
             generation++;
             console.log(`Incrementing to generation ${generation} due to ghost collision`);
+            // Update generation display in both counters
+            updateGenerationDisplay();
         }
-        
-        // Adaptive learning rate and discount factor based on performance
-        updateLearningParameters();
-        
-        // Update generation count every 20 episodes or on collision
-        if (!isCollision && totalEpisodes % 20 === 0) {
+        // Only increment for episodes if not already incremented due to collision
+        else if (totalEpisodes % 20 === 0) {
+            // Adaptive learning rate and discount factor based on performance
+            updateLearningParameters();
+            
+            // Update generation count every 20 episodes
             generation++;
             console.log(`Starting generation ${generation} with exploration rate ${explorationRate.toFixed(3)}`);
-        }
-        
-        // Update the generation counter in the UI
-        const genCounter = document.getElementById("gen-counter");
-        if (genCounter) {
-            genCounter.textContent = `${generation}/100`;
+            // Update generation display in both counters
+            updateGenerationDisplay();
+        } 
+        // Always update learning parameters even if we don't increment generation
+        else {
+            // Adaptive learning rate and discount factor based on performance
+            updateLearningParameters();
         }
         
         // Log episode results
@@ -940,13 +923,24 @@ function finishEpisode(reward, dotsEaten, score, isCollision = false) {
                     `Dots: ${dotsEaten}, Score: ${score}, ` +
                     `Generation: ${generation}, Exploration rate: ${explorationRate.toFixed(3)}`);
         
-        // Update UI with episode results
-        updateAIStatus(`Generation ${generation} - Reward: ${reward.toFixed(2)}`);
+        // Update UI with episode results - but don't increment generation again
+        const statusMessage = `Generation ${generation} - Reward: ${reward.toFixed(2)}`;
+        console.log(`AI Status update: ${statusMessage}`);
+        
+        // Update score display directly
+        const scoreElement = document.getElementById('ai-score');
+        if (scoreElement && aiGame) {
+            scoreElement.textContent = aiGame.score || 0;
+        }
+        
+        // Force render AI game to ensure status is reflected
+        aiGame?.render();
         
         // Check if we've reached the generation limit
-        if (generation > 100) {
-            console.log("Reached maximum generation limit (100). Training complete.");
-            updateAIStatus("Training complete - 100 generations finished");
+        if (generation > MAX_GENERATIONS) {
+            console.log(`Reached maximum generation limit (${MAX_GENERATIONS}). Training complete.`);
+            updateAIStatus(`Training complete - ${MAX_GENERATIONS} generations finished`);
+            stopEvolution();
             return;
         }
         
@@ -966,6 +960,27 @@ function finishEpisode(reward, dotsEaten, score, isCollision = false) {
     }
 }
 
+// Helper function to update generation displays throughout the UI
+function updateGenerationDisplay() {
+    // Update the main generation counter in the game panel
+    const aiGenerationElement = document.getElementById('ai-generation');
+    if (aiGenerationElement) {
+        aiGenerationElement.textContent = generation;
+        console.log(`Updated ai-generation to ${generation}`);
+    }
+    
+    // Update the generation counter in the stats panel
+    const genCounter = document.getElementById("gen-counter");
+    if (genCounter) {
+        genCounter.textContent = `${generation}/${MAX_GENERATIONS}`;
+    }
+    
+    // If we have an aiGame instance, update its generation counter
+    if (aiGame) {
+        aiGame.setGeneration(generation, 1);
+    }
+}
+
 // Helper function to update learning parameters
 function updateLearningParameters() {
     // Decrease learning rate as we progress to fine-tune learning
@@ -979,15 +994,34 @@ function updateLearningParameters() {
     }
     
     // Decay exploration rate - more adaptive based on generation
-    if (generation < 30) {
-        // Higher exploration early on
-        explorationRate = Math.max(0.1, explorationRate * (1 - 0.008));
-    } else if (generation < 70) {
-        // Medium exploration in middle generations
-        explorationRate = Math.max(0.05, explorationRate * (1 - 0.015));
+    if (generation < 40) {
+        // Maintain high exploration for longer
+        explorationRate = Math.max(0.4, 1.0 - (generation / 50));
+    } else if (generation < 100) {
+        // Medium exploration in middle generations - slower decay
+        explorationRate = Math.max(0.25, 0.5 - (generation - 40) / 200);
     } else {
-        // Very low exploration in final generations to exploit knowledge
-        explorationRate = Math.max(minExplorationRate, explorationRate * (1 - 0.025));
+        // More gradual reduction for later generations 
+        explorationRate = Math.max(0.1, 0.25 - (generation - 100) / 400);
+    }
+
+    // Apply episode-based decay within each generation
+    if (episodeRewards.length > 0) {
+        // Apply additional small decay based on episodes
+        const episodeFactor = Math.min(0.9, episodeRewards.length / 100);
+        explorationRate *= (1 - (0.1 * episodeFactor));
+    }
+
+    // Ensure we don't go below minimum
+    explorationRate = Math.max(0.05, explorationRate);
+    
+    // Update the actual parameter in the game
+    aiGame.setExplorationRate(explorationRate);
+    
+    // Also update UI element if it exists
+    const explorationRateElement = document.getElementById('exploration-rate');
+    if (explorationRateElement) {
+        explorationRateElement.textContent = (explorationRate * 100).toFixed(1) + '%';
     }
 }
 
@@ -1025,13 +1059,10 @@ function restartAIGame() {
 function recoverFromError() {
     try {
         if (aiGame) {
-            generation = Math.min(100, generation + 1);
+            generation = Math.min(MAX_GENERATIONS, generation + 1);
             
-            // Update UI
-            const genCounter = document.getElementById("gen-counter");
-            if (genCounter) {
-                genCounter.textContent = `${generation}/100`;
-            }
+            // Update UI with the new generation
+            updateGenerationDisplay();
             
             // Force restart
             aiGame.reset();
@@ -1352,4 +1383,53 @@ function initFloatingGhosts() {
         // Add to container
         ghostContainer.appendChild(ghost);
     }
+}
+
+// Calculate diversity of the population based on parameter variance
+function calculatePopulationDiversity() {
+    // Sample a parameter to check diversity
+    const paramKeys = Object.keys(agents[0].parameters);
+    const sampleKey = paramKeys[Math.floor(Math.random() * paramKeys.length)];
+     
+    // Calculate mean and variance using reduce
+    const { sum, sumSquared } = agents.reduce((acc, agent) => {
+        const value = agent.parameters[sampleKey];
+        return {
+            sum: acc.sum + value,
+            sumSquared: acc.sumSquared + value * value
+        };
+    }, { sum: 0, sumSquared: 0 });
+     
+    const mean = sum / agents.length;
+    const variance = (sumSquared / agents.length) - (mean * mean);
+    const stdDev = Math.sqrt(Math.max(0, variance));
+     
+    // Calculate normalized diversity (0-1)
+    const range = PARAMETER_RANGE[sampleKey];
+    const rangeSize = range.max - range.min;
+    return stdDev / (rangeSize * 0.3); // Normalize to 0-1 range approximately
+}
+
+// Start Q-learning with the current agent
+function startQLearning() {
+    const currentAgentParams = Object.assign({}, agents[currentAgent].parameters);
+    console.log("Starting Q-learning with parameters:", currentAgentParams);
+    
+    // Initialize Q-learning parameters
+    const qLearningParams = {
+        learningRate: 0.25,        // Increased from default for faster learning
+        discountFactor: 0.95,      // Slightly higher to value future rewards more
+        explorationRate: 1.0,      // Start with full exploration
+        parameters: currentAgentParams
+    };
+    
+    // Pass parameters to the ai-game component
+    aiGame.setQLearningParams(qLearningParams);
+    
+    // Update UI
+    updateAIStatus(`Q-learning started with parameters: ${JSON.stringify(currentAgentParams)}`);
+    
+    // Enable control buttons
+    document.getElementById('stop-evolution').disabled = false;
+    document.getElementById('learning-visualization').disabled = false;
 }
